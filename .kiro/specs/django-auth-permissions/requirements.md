@@ -106,3 +106,4 @@ This document specifies the requirements for a Django-based authentication and a
 3. WHEN a user submits a new password through the reset form THEN the Authentication System SHALL update the password and invalidate the reset link
 4. WHEN a user attempts to use an expired reset link THEN the Authentication System SHALL reject the request and display an error message
 5. WHEN a password reset is completed THEN the Authentication System SHALL invalidate all existing sessions for that user
+now i can acces this locallt only , i need to acces in the entire network

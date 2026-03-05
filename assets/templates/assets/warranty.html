@@ -1,0 +1,52 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Warranty Tracking - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Warranty Tracking</h1>
+
+{% if assets %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Asset Tag</th>
+                <th>System Type</th>
+                <th>Operating System</th>
+                <th>IP Address</th>
+                <th>Assigned To</th>
+                <th>Team</th>
+                <th>Warranty Expiration</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr class="{% if asset in expiring_soon %}warranty-expiring-soon{% elif asset.warranty_expiration < today %}warranty-expired{% endif %}">
+                <td>{{ asset.asset_tag }}</td>
+                <td>{{ asset.system_type }}</td>
+                <td>{{ asset.operating_system.name }}</td>
+                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>{{ asset.assigned_to|default:"N/A" }}</td>
+                <td>{{ asset.team.name|default:"N/A" }}</td>
+                <td>{{ asset.warranty_expiration|date:"Y-m-d" }}</td>
+                <td>
+                    {% if asset.warranty_expiration < today %}
+                        <span class="status-badge status-expired">Expired</span>
+                    {% elif asset in expiring_soon %}
+                        <span class="status-badge status-expiring">Expiring Soon</span>
+                    {% else %}
+                        <span class="status-badge status-active">Active</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>No assets with warranty information found.</p>
+</div>
+{% endif %}
+{% endblock %}

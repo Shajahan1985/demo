@@ -6,20 +6,48 @@
 <h1>Dashboard</h1>
 
 {% if user.is_authenticated %}
-    <p>Welcome, {{ user.username }}!</p>
+    <div style="margin-bottom: 2rem;">
+        <p style="font-size: 1.25rem; color: #2c3e50;">Welcome back, <strong>{{ user.username }}</strong>!</p>
+        <p class="text-muted">You are logged in and have access to the system.</p>
+    </div>
     
-    {% if perms.auth.view_user %}
-    <div class="mb-3">
-        <a href="{% url 'user_list' %}" class="btn btn-primary">Manage Users</a>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-top: 2rem;">
+        {% if perms.auth.view_user %}
+        <div class="card">
+            <div class="card-body">
+                <h3>User Management</h3>
+                <p class="text-muted">Create, view, and manage user accounts.</p>
+                <a href="{% url 'user_list' %}" class="btn-primary">Manage Users</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if perms.auth.view_group %}
+        <div class="card">
+            <div class="card-body">
+                <h3>Role Management</h3>
+                <p class="text-muted">Create and manage roles with permissions.</p>
+                <a href="{% url 'role_list' %}" class="btn-primary">Manage Roles</a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <div class="card-body">
+                <h3>Your Profile</h3>
+                <p class="text-muted">Email: {{ user.email|default:"Not set" }}</p>
+                <p class="text-muted">Joined: {{ user.date_joined|date:"F d, Y" }}</p>
+            </div>
+        </div>
+    </div>
+    
+    {% if not perms.auth.view_user and not perms.auth.view_group %}
+    <div style="margin-top: 2rem; padding: 1.5rem; background-color: #f8f9fa; border-radius: 4px;">
+        <p class="text-muted">You don't have administrative permissions. Contact your administrator if you need access to additional features.</p>
     </div>
     {% endif %}
-    
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit">Logout</button>
-    </form>
 {% else %}
     <p>You are not logged in.</p>
-    <a href="{% url 'login' %}">Login</a>
+    <a href="{% url 'login' %}" class="btn-primary">Login</a>
 {% endif %}
 {% endblock %}

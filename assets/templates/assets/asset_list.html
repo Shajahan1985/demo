@@ -1,0 +1,59 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Active Assets - Asset Tracker{% endblock %}
+
+{% block content %}
+<div class="header-actions">
+    <h1>Active Assets</h1>
+    {% if user.is_staff %}
+    <a href="{% url 'asset_create' %}" class="btn btn-primary">Add New Asset</a>
+    {% endif %}
+</div>
+
+{% if assets %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Serial Number</th>
+                <th>Asset Tag</th>
+                <th>System Type</th>
+                <th>OS</th>
+                <th>IP</th>
+                <th>Assigned To</th>
+                <th>Team</th>
+                {% if user.is_staff %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr>
+                <td>{{ asset.serial_number }}</td>
+                <td>{{ asset.asset_tag }}</td>
+                <td>{{ asset.system_type }}</td>
+                <td>{{ asset.operating_system.name }}</td>
+                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>{{ asset.assigned_to|default:"N/A" }}</td>
+                <td>{{ asset.team.name|default:"N/A" }}</td>
+                {% if user.is_staff %}
+                <td>
+                    <div class="action-buttons">
+                        <a href="{% url 'asset_update' asset.pk %}" class="btn btn-sm btn-warning">Edit</a>
+                        <a href="{% url 'asset_free' asset.pk %}" class="btn btn-sm btn-danger">Free</a>
+                    </div>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>No active assets found.</p>
+</div>
+{% endif %}
+{% endblock %}
+

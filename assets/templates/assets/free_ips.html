@@ -1,0 +1,51 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Free IPs - Asset Tracker{% endblock %}
+
+{% block extra_css %}
+.ip-range-section {
+    margin-bottom: 2rem;
+}
+
+.ip-count {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+}
+
+.ip-item:hover {
+    background-color: #e9ecef;
+    border-color: #3498db;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+{% endblock %}
+
+{% block content %}
+<h1>Free IP Addresses</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% if ip_ranges %}
+    {% for range_pattern, ips in ip_ranges.items %}
+    <div class="ip-range-group">
+        <h3>{{ range_pattern }} <span class="ip-count">({{ ips|length }} available)</span></h3>
+        <div class="ip-list">
+            {% for ip in ips %}
+            <div class="ip-item">{{ ip.address }}</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+<div class="alert alert-info">
+    <p>No free IP addresses available.</p>
+</div>
+{% endif %}
+{% endblock %}

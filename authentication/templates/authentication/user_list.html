@@ -1,76 +1,67 @@
 {% extends 'authentication/base.html' %}
 
-{% block title %}User Management{% endblock %}
+{% block title %}User Management - Asset Tracker{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>User Management</h2>
-        {% if perms.auth.add_user %}
-        <a href="{% url 'user_create' %}" class="btn btn-primary">Create New User</a>
-        {% endif %}
-    </div>
-
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        {% endfor %}
+<div class="d-flex justify-content-between align-items-center" style="margin-bottom: 1.5rem;">
+    <h1>User Management</h1>
+    {% if perms.auth.add_user %}
+    <a href="{% url 'user_create' %}" class="btn-success">Create New User</a>
     {% endif %}
+</div>
 
-    <div class="table-responsive">
-        <table class="table table-striped table-hover">
-            <thead>
-                <tr>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Role(s)</th>
-                    <th>Status</th>
-                    <th>Date Joined</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>{{ user.username }}</td>
-                    <td>{{ user.email }}</td>
-                    <td>
-                        {% for group in user.groups.all %}
-                            <span class="badge bg-secondary">{{ group.name }}</span>
-                        {% empty %}
-                            <span class="text-muted">No role</span>
-                        {% endfor %}
-                    </td>
-                    <td>
-                        {% if user.is_active %}
-                            <span class="badge bg-success">Active</span>
-                        {% else %}
-                            <span class="badge bg-danger">Inactive</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ user.date_joined|date:"Y-m-d" }}</td>
-                    <td>
+<div style="overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role(s)</th>
+                <th>Status</th>
+                <th>Date Joined</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td><strong>{{ user.username }}</strong></td>
+                <td>{{ user.email|default:"—" }}</td>
+                <td>
+                    {% for group in user.groups.all %}
+                        <span class="badge-secondary">{{ group.name }}</span>
+                    {% empty %}
+                        <span class="text-muted">No role</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% if user.is_active %}
+                        <span class="badge-success">Active</span>
+                    {% else %}
+                        <span class="badge-danger">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>{{ user.date_joined|date:"M d, Y" }}</td>
+                <td>
+                    <div class="d-flex gap-2">
                         {% if perms.auth.change_user %}
-                        <a href="{% url 'user_update' user.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <a href="{% url 'user_update' user.pk %}" class="btn-primary btn-sm">Edit</a>
                         {% if user.is_active %}
-                        <a href="{% url 'user_deactivate' user.pk %}" class="btn btn-sm btn-outline-warning" 
+                        <a href="{% url 'user_deactivate' user.pk %}" class="btn-warning btn-sm" 
                            onclick="return confirm('Are you sure you want to deactivate this user?')">Deactivate</a>
                         {% else %}
-                        <a href="{% url 'user_reactivate' user.pk %}" class="btn btn-sm btn-outline-success">Reactivate</a>
+                        <a href="{% url 'user_reactivate' user.pk %}" class="btn-success btn-sm">Reactivate</a>
                         {% endif %}
                         {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6" class="text-center text-muted">No users found.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="text-center text-muted">No users found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 {% endblock %}

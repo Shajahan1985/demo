@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asset Warranty Expiration Alert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-top: none;
+        }
+        .asset-list {
+            background-color: white;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #dc3545;
+        }
+        .asset-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .asset-item:last-child {
+            border-bottom: none;
+        }
+        .asset-tag {
+            font-weight: bold;
+            color: #dc3545;
+        }
+        .expiry-date {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .days-remaining {
+            display: inline-block;
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            padding: 15px;
+            color: #6c757d;
+            font-size: 0.9em;
+            border-top: 1px solid #dee2e6;
+        }
+        .action-note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚠️ Warranty Expiration Alert</h1>
+    </div>
+    
+    <div class="content">
+        <p>Hello,</p>
+        
+        <p>The following assets have warranties expiring within the next 7 days:</p>
+        
+        <div class="asset-list">
+            {% for asset in assets %}
+            <div class="asset-item">
+                <div>
+                    <span class="asset-tag">{{ asset.asset_tag }}</span>
+                    <span>({{ asset.system_type }})</span>
+                </div>
+                <div class="expiry-date">
+                    Expires: {{ asset.warranty_expiration|date:"Y-m-d" }}
+                    <span class="days-remaining">{{ asset.days_remaining }} day{{ asset.days_remaining|pluralize }} remaining</span>
+                </div>
+                {% if asset.assigned_to %}
+                <div style="font-size: 0.9em; color: #6c757d;">
+                    Assigned to: {{ asset.assigned_to }}
+                    {% if asset.team %} ({{ asset.team.name }}){% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="action-note">
+            <strong>Action Required:</strong> Please review these assets and take necessary action to renew warranties before expiration.
+        </div>
+        
+        <p>You can view all warranty information in the Asset Tracking System.</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message from the Asset Tracking System.</p>
+        <p>Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Scrap Asset - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Scrap Asset</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="asset-info">
+    <h3>Asset Details</h3>
+    <p><strong>Asset Tag:</strong> {{ asset.asset_tag }}</p>
+    <p><strong>System Type:</strong> {{ asset.system_type }}</p>
+    <p><strong>IP Address:</strong> {{ asset.ip_address|default:"N/A" }}</p>
+    <p><strong>Status:</strong> {{ asset.status }}</p>
+</div>
+
+<p><strong>Do you want to scrap this system?</strong></p>
+<div class="warning-list danger">
+    <p>This action will:</p>
+    <ul>
+        <li>Move the asset to the Scrapped Items page</li>
+        <li>Record the date of deletion</li>
+        <li>Retain the asset tag and IP address information</li>
+    </ul>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-danger">Scrap Asset</button>
+        <a href="{% url 'freed_systems' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

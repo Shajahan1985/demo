@@ -1,0 +1,21 @@
+Asset Warranty Expiration Alert
+================================
+
+Hello,
+
+The following assets have warranties expiring within the next 7 days:
+
+{% for asset in assets %}
+- {{ asset.asset_tag }} ({{ asset.system_type }})
+  Expires: {{ asset.warranty_expiration|date:"Y-m-d" }} ({{ asset.days_remaining }} day{{ asset.days_remaining|pluralize }} remaining)
+  {% if asset.assigned_to %}Assigned to: {{ asset.assigned_to }}{% if asset.team %} ({{ asset.team.name }}){% endif %}{% endif %}
+
+{% endfor %}
+
+ACTION REQUIRED: Please review these assets and take necessary action to renew warranties before expiration.
+
+You can view all warranty information in the Asset Tracking System.
+
+---
+This is an automated message from the Asset Tracking System.
+Please do not reply to this email.

@@ -1,0 +1,154 @@
+{% extends "assets/base.html" %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Asset - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>{% if form.instance.pk %}Edit{% else %}Create New{% endif %} Asset</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-group">
+        <label for="{{ form.asset_tag.id_for_label }}" class="required">{{ form.asset_tag.label }}</label>
+        {{ form.asset_tag }}
+        {% if form.asset_tag.errors %}
+            {% for error in form.asset_tag.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        {% if form.asset_tag.help_text %}
+            <div class="help-text">{{ form.asset_tag.help_text }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.system_type.id_for_label }}" class="required">{{ form.system_type.label }}</label>
+        {{ form.system_type }}
+        {% if form.system_type.errors %}
+            {% for error in form.system_type.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.operating_system.id_for_label }}" class="required">{{ form.operating_system.label }}</label>
+        {{ form.operating_system }}
+        {% if form.operating_system.errors %}
+            {% for error in form.operating_system.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.ip_address.id_for_label }}">{{ form.ip_address.label }}</label>
+        {{ form.ip_address }}
+        {% if form.ip_address.errors %}
+            {% for error in form.ip_address.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.assigned_to.id_for_label }}">{{ form.assigned_to.label }}</label>
+        {{ form.assigned_to }}
+        {% if form.assigned_to.errors %}
+            {% for error in form.assigned_to.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.team.id_for_label }}">{{ form.team.label }}</label>
+        {{ form.team }}
+        {% if form.team.errors %}
+            {% for error in form.team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.warranty_expiration.id_for_label }}">{{ form.warranty_expiration.label }}</label>
+        {{ form.warranty_expiration }}
+        {% if form.warranty_expiration.errors %}
+            {% for error in form.warranty_expiration.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.particulars.id_for_label }}">{{ form.particulars.label }}</label>
+        {{ form.particulars }}
+        {% if form.particulars.errors %}
+            {% for error in form.particulars.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    {% if form.instance.pk %}
+    <!-- Existing Attachments Section -->
+    <div class="form-group">
+        <label>Existing Attachments</label>
+        {% if form.instance.attachments.all %}
+            <div class="attachments-list">
+                {% for attachment in form.instance.attachments.all %}
+                    <div class="attachment-item">
+                        <span class="attachment-name">
+                            <a href="{{ attachment.file.url }}" target="_blank">{{ attachment.filename }}</a>
+                        </span>
+                        <span class="attachment-date">Uploaded: {{ attachment.uploaded_at|date:"Y-m-d H:i" }}</span>
+                        <form method="post" action="{% url 'delete_attachment' attachment.pk %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this attachment?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="no-attachments">No attachments yet.</p>
+        {% endif %}
+    </div>
+    
+    <!-- File Upload Section -->
+    <div class="form-group">
+        <label for="attachment_file">Add New Attachment</label>
+        <input type="file" name="attachment_file" id="attachment_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.doc,.docx,.xls,.xlsx,.txt,.zip">
+        <div class="help-text">Maximum file size: 10MB. Allowed types: PDF, images (JPG, PNG, GIF, BMP), documents (DOC, DOCX, XLS, XLSX, TXT, ZIP)</div>
+    </div>
+    {% else %}
+    <!-- File Upload Section for New Assets -->
+    <div class="form-group">
+        <label for="attachment_file">Add Attachment (Optional)</label>
+        <input type="file" name="attachment_file" id="attachment_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.doc,.docx,.xls,.xlsx,.txt,.zip">
+        <div class="help-text">Maximum file size: 10MB. Allowed types: PDF, images (JPG, PNG, GIF, BMP), documents (DOC, DOCX, XLS, XLSX, TXT, ZIP)</div>
+    </div>
+    {% endif %}
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+            {% if form.instance.pk %}Update{% else %}Create{% endif %} Asset
+        </button>
+        <a href="{% url 'asset_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Free Asset - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Free Asset</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="asset-info">
+    <h3>Asset Details</h3>
+    <p><strong>Asset Tag:</strong> {{ asset.asset_tag }}</p>
+    <p><strong>System Type:</strong> {{ asset.system_type }}</p>
+    <p><strong>Assigned To:</strong> {{ asset.assigned_to|default:"N/A" }}</p>
+    <p><strong>Team:</strong> {{ asset.team|default:"N/A" }}</p>
+</div>
+
+<p><strong>Do you want to free this system?</strong></p>
+<div class="warning-list warning">
+    <p>This action will:</p>
+    <ul>
+        <li>Change the asset status to "freed"</li>
+        <li>Clear the assigned user and team</li>
+        <li>Release the IP address</li>
+    </ul>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    
+    <div class="form-group">
+        {{ form.password.label_tag }}
+        {{ form.password }}
+        {% if form.password.errors %}
+            <div class="alert alert-danger">
+                {{ form.password.errors }}
+            </div>
+        {% endif %}
+        {% if form.password.help_text %}
+            <small class="help-text">{{ form.password.help_text }}</small>
+        {% endif %}
+    </div>
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-danger">Free Asset</button>
+        <a href="{% url 'asset_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Scrapped Items - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Scrapped Items</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% if scrapped_assets %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Asset Tag</th>
+                <th>IP Address</th>
+                <th>Scrapped Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in scrapped_assets %}
+            <tr>
+                <td>{{ asset.asset_tag }}</td>
+                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>{{ asset.scrapped_date|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>No scrapped items found.</p>
+</div>
+{% endif %}
+{% endblock %}

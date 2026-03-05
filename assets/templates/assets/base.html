@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Asset Tracker{% endblock %}</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'assets/css/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'assets/css/mobile.css' %}">
+    <style>
+        {% block extra_css %}{% endblock %}
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="{% url 'asset_list' %}" class="navbar-brand">Asset Tracker</a>
+            <ul class="navbar-nav">
+                <li><a href="{% url 'asset_list' %}" {% if request.resolver_match.url_name == 'asset_list' %}class="active"{% endif %}>Active Assets</a></li>
+                <li><a href="{% url 'freed_systems' %}" {% if request.resolver_match.url_name == 'freed_systems' %}class="active"{% endif %}>Free Systems</a></li>
+                <li><a href="{% url 'scrapped_items' %}" {% if request.resolver_match.url_name == 'scrapped_items' %}class="active"{% endif %}>Scrapped Items</a></li>
+                <li><a href="{% url 'free_ips' %}" {% if request.resolver_match.url_name == 'free_ips' %}class="active"{% endif %}>Free IPs</a></li>
+                <li><a href="{% url 'warranty' %}" {% if request.resolver_match.url_name == 'warranty' %}class="active"{% endif %}>Warranty</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <div class="content-wrapper">
+            {% block content %}
+            {% endblock %}
+        </div>
+    </div>
+    
+    <script src="{% static 'assets/js/main.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

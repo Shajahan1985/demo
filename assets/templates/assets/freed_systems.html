@@ -1,0 +1,54 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Free Systems - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Free Systems</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% if freed_assets %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Asset Tag</th>
+                <th>IP Address</th>
+                <th>System Type</th>
+                <th>Operating System</th>
+                <th>Freed Date</th>
+                {% if user.is_staff %}
+                <th>Actions</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in freed_assets %}
+            <tr>
+                <td>{{ asset.asset_tag }}</td>
+                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>{{ asset.system_type }}</td>
+                <td>{{ asset.operating_system.name }}</td>
+                <td>{{ asset.freed_date|date:"Y-m-d H:i" }}</td>
+                {% if user.is_staff %}
+                <td>
+                    <a href="{% url 'asset_scrap' asset.pk %}" class="btn btn-sm btn-danger">Scrap</a>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>No freed systems found.</p>
+</div>
+{% endif %}
+{% endblock %}
