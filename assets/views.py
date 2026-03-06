@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
 from django.views.generic import ListView, CreateView
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
 from .models import Asset
@@ -9,11 +10,12 @@ from .permissions import AdminRequiredMixin
 from .services.asset_service import AssetService
 
 
-class AssetListView(ListView):
+class AssetListView(LoginRequiredMixin, ListView):
     """Display all active assets ordered by serial number."""
     model = Asset
     template_name = 'assets/asset_list.html'
     context_object_name = 'assets'
+    login_url = '/login/'
 
     def get_queryset(self):
         """Return only active assets ordered by serial_number."""
@@ -138,11 +140,12 @@ class AssetUpdateView(AdminRequiredMixin, CreateView):
         return super().form_invalid(form)
 
 
-class FreeSystemsView(ListView):
+class FreeSystemsView(LoginRequiredMixin, ListView):
     """Display all freed assets."""
     model = Asset
     template_name = 'assets/freed_systems.html'
     context_object_name = 'freed_assets'
+    login_url = '/login/'
 
     def get_queryset(self):
         """Return only freed assets."""
@@ -151,11 +154,12 @@ class FreeSystemsView(ListView):
         ).order_by('-freed_date')
 
 
-class ScrappedItemsView(ListView):
+class ScrappedItemsView(LoginRequiredMixin, ListView):
     """Display all scrapped assets ordered by scrapped_date descending."""
     model = Asset
     template_name = 'assets/scrapped_items.html'
     context_object_name = 'scrapped_assets'
+    login_url = '/login/'
 
     def get_queryset(self):
         """Return only scrapped assets ordered by scrapped_date descending."""
@@ -164,11 +168,12 @@ class ScrappedItemsView(ListView):
         ).order_by('-scrapped_date')
 
 
-class FreeIPsView(ListView):
+class FreeIPsView(LoginRequiredMixin, ListView):
     """Display free IP addresses grouped by range."""
     model = Asset
     template_name = 'assets/free_ips.html'
     context_object_name = 'ip_ranges'
+    login_url = '/login/'
 
     def get_queryset(self):
         """Return free IPs grouped by range using IPManagementService."""
@@ -336,11 +341,12 @@ class AssetScrapView(AdminRequiredMixin, CreateView):
             return redirect('freed_systems')
 
 
-class WarrantyView(ListView):
+class WarrantyView(LoginRequiredMixin, ListView):
     """Display all assets with warranty information."""
     model = Asset
     template_name = 'assets/warranty.html'
     context_object_name = 'assets'
+    login_url = '/login/'
 
     def get_queryset(self):
         """Return all assets with warranty dates ordered by warranty_expiration ascending."""
