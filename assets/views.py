@@ -1,27 +1,53 @@
 from django.shortcuts import render, redirect
 from django.views.generic import ListView, CreateView
+from django.views import View
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
 from .models import Asset
 from .forms import AssetForm
+from .forms.import_form import AssetImportForm
+from .forms.filter_form import AssetFilterForm
 from .permissions import AdminRequiredMixin
 from .services.asset_service import AssetService
+from .services.import_service import ImportService
+from .services.export_service import ExportService
+from .services.filter_service import FilterService
 
 
 class AssetListView(LoginRequiredMixin, ListView):
-    """Display all active assets ordered by serial number."""
+    """Display all active assets ordered by serial number with filtering support."""
     model = Asset
     template_name = 'assets/asset_list.html'
     context_object_name = 'assets'
     login_url = '/login/'
 
     def get_queryset(self):
-        """Return only active assets ordered by serial_number."""
-        return Asset.objects.filter(status='active').select_related(
-            'operating_system', 'ip_address', 'team'
+        """Return active assets with filters applied, ordered by serial_number."""
+        # Start with base queryset of active assets
+        queryset = Asset.objects.filter(status='active').select_related(
+            'operating_system', 'ip_address', 'team', 'team__parent'
         ).order_by('serial_number')
+        
+        # Initialize filter form with GET parameters
+        filter_form = AssetFilterForm(self.request.GET)
+        
+        # Apply filters if form is valid
+        if filter_form.is_valid():
+            filter_service = FilterService()
+            queryset = filter_service.apply_filters(queryset, filter_form.cleaned_data)
+        
+        return queryset
+    
+    def get_context_data(self, **kwargs):
+        """Add filter form to template context."""
+        context = super().get_context_data(**kwargs)
+        
+        # Initialize filter form with GET parameters to preserve filter values
+        context['filter_form'] = AssetFilterForm(self.request.GET)
+        
+        return context
 
 
 class AssetCreateView(AdminRequiredMixin, CreateView):
@@ -38,6 +64,7 @@ class AssetCreateView(AdminRequiredMixin, CreateView):
             data = {
                 'asset_tag': form.cleaned_data['asset_tag'],
                 'system_type': form.cleaned_data['system_type'],
+                'hardware_serial_number': form.cleaned_data.get('hardware_serial_number', ''),
                 'operating_system': form.cleaned_data['operating_system'].id,
                 'ip_address': form.cleaned_data['ip_address'].id if form.cleaned_data.get('ip_address') else None,
                 'particulars': form.cleaned_data.get('particulars', ''),
@@ -188,27 +215,6 @@ class FreeIPsView(LoginRequiredMixin, ListView):
         return context
 
 
-
-    class FreeIPsView(ListView):
-        """Display free IP addresses grouped by range."""
-        model = Asset
-        template_name = 'assets/free_ips.html'
-        context_object_name = 'ip_ranges'
-
-        def get_queryset(self):
-            """Return free IPs grouped by range using IPManagementService."""
-            from .services.ip_management_service import IPManagementService
-            return IPManagementService.get_free_ips_by_range()
-
-        def get_context_data(self, **kwargs):
-            """Add grouped IPs dict to template context."""
-            context = super().get_context_data(**kwargs)
-            # The queryset is already the grouped dict from get_free_ips_by_range()
-            context['ip_ranges'] = self.get_queryset()
-            return context
-
-
-
 class AssetFreeView(AdminRequiredMixin, CreateView):
     """Handle freeing assets (admin only)."""
     model = Asset
@@ -353,7 +359,7 @@ class WarrantyView(LoginRequiredMixin, ListView):
         return Asset.objects.filter(
             warranty_expiration__isnull=False
         ).select_related(
-            'operating_system', 'ip_address', 'team'
+            'operating_system', 'ip_address', 'team', 'team__parent'
         ).order_by('warranty_expiration')
 
     def get_context_data(self, **kwargs):
@@ -370,3 +376,171 @@ class WarrantyView(LoginRequiredMixin, ListView):
         context['today'] = timezone.now().date()
         
         return context
+
+
+class AssetImportView(AdminRequiredMixin, View):
+    """Handle Excel file import for bulk asset creation (admin only)."""
+    template_name = 'assets/asset_import.html'
+    results_template_name = 'assets/asset_import_results.html'
+    
+    def get(self, request):
+        """Display the import form or download template."""
+        # Check if template download is requested
+        if request.GET.get('download_template'):
+            from django.http import FileResponse
+            import os
+            from django.conf import settings
+            
+            # Path to the sample template
+            template_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'sample_import_template.xlsx')
+            
+            # Check if file exists
+            if os.path.exists(template_path):
+                response = FileResponse(
+                    open(template_path, 'rb'),
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                response['Content-Disposition'] = 'attachment; filename="sample_import_template.xlsx"'
+                return response
+            else:
+                messages.error(request, "Sample template file not found.")
+        
+        # Display the import form
+        form = AssetImportForm()
+        return render(request, self.template_name, {'form': form})
+    
+    def post(self, request):
+        """Process the uploaded Excel file and import assets."""
+        form = AssetImportForm(request.POST, request.FILES)
+        
+        if form.is_valid():
+            # Get the uploaded file
+            file = request.FILES['file']
+            
+            # Initialize ImportService and process the file
+            import_service = ImportService()
+            result = import_service.import_assets(file, request.user)
+            
+            # Display success message if any assets were imported
+            if result['success_count'] > 0:
+                messages.success(
+                    request,
+                    f"Successfully imported {result['success_count']} asset(s)."
+                )
+            
+            # Display warning message if there were errors
+            if result['error_count'] > 0:
+                messages.warning(
+                    request,
+                    f"{result['error_count']} row(s) had errors and were not imported."
+                )
+            
+            # Store results in session for the results page
+            request.session['import_results'] = {
+                'success_count': result['success_count'],
+                'error_count': result['error_count'],
+                'errors': result['errors']
+            }
+            
+            # Redirect to the results page
+            return redirect('asset_import_results')
+        
+        # Form validation failed, re-display form with errors
+        return render(request, self.template_name, {'form': form})
+
+
+class AssetImportResultsView(AdminRequiredMixin, View):
+    """Display import results from session."""
+    template_name = 'assets/asset_import_results.html'
+    
+    def get(self, request):
+        """Display the import results stored in session."""
+        # Retrieve results from session
+        import_results = request.session.get('import_results', None)
+        
+        # If no results in session, redirect to import page
+        if import_results is None:
+            messages.info(request, "No import results to display.")
+            return redirect('asset_import')
+        
+        # Clear the results from session after retrieving
+        del request.session['import_results']
+        
+        return render(request, self.template_name, {
+            'success_count': import_results['success_count'],
+            'error_count': import_results['error_count'],
+            'errors': import_results['errors']
+        })
+
+
+class AssetExportActiveView(LoginRequiredMixin, View):
+    """Export active assets to Excel file."""
+    login_url = '/login/'
+    
+    def get(self, request):
+        """Generate and return Excel file with active assets."""
+        export_service = ExportService()
+        return export_service.export_active_assets()
+
+
+class AssetExportFreedView(LoginRequiredMixin, View):
+    """Export freed assets to Excel file."""
+    login_url = '/login/'
+    
+    def get(self, request):
+        """Generate and return Excel file with freed assets."""
+        export_service = ExportService()
+        return export_service.export_freed_assets()
+
+
+class AssetExportScrappedView(LoginRequiredMixin, View):
+    """Export scrapped assets to Excel file."""
+    login_url = '/login/'
+    
+    def get(self, request):
+        """Generate and return Excel file with scrapped assets."""
+        export_service = ExportService()
+        return export_service.export_scrapped_assets()
+
+
+class FreeIPsExportView(LoginRequiredMixin, View):
+    """Export free IP addresses to Excel file."""
+    login_url = '/login/'
+    
+    def get(self, request):
+        """Generate and return Excel file with free IP addresses."""
+        export_service = ExportService()
+        return export_service.export_free_ips()
+
+
+
+
+
+class GetSubTeamsView(LoginRequiredMixin, View):
+    """API endpoint to get sub-teams for a parent team."""
+    login_url = '/login/'
+    
+    def get(self, request):
+        """Return sub-teams as JSON for the given parent team ID."""
+        from django.http import JsonResponse
+        
+        parent_id = request.GET.get('parent_id')
+        
+        if not parent_id:
+            return JsonResponse({'sub_teams': []})
+        
+        try:
+            parent_team = Team.objects.get(pk=parent_id)
+            sub_teams = parent_team.sub_teams.all().order_by('name')
+            
+            sub_teams_data = [
+                {'id': sub.id, 'name': sub.name}
+                for sub in sub_teams
+            ]
+            
+            return JsonResponse({
+                'sub_teams': sub_teams_data,
+                'has_sub_teams': len(sub_teams_data) > 0
+            })
+        except Team.DoesNotExist:
+            return JsonResponse({'sub_teams': [], 'has_sub_teams': False})

@@ -47,6 +47,7 @@ class AssetService:
             asset = Asset.objects.create(
                 asset_tag=data.get('asset_tag'),
                 system_type=data.get('system_type'),
+                hardware_serial_number=data.get('hardware_serial_number', ''),
                 operating_system_id=data.get('operating_system'),
                 particulars=data.get('particulars', ''),
                 assigned_to=data.get('assigned_to', ''),

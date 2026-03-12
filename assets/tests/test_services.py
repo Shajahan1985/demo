@@ -1182,3 +1182,1256 @@ class TestWarrantyTask(TestCase):
         
         # No email should be sent
         self.assertEqual(len(mail.outbox), 0)
+
+
+
+class TestImportService(TestCase):
+    """Test cases for ImportService."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from assets.services.import_service import ImportService
+        self.import_service = ImportService()
+    
+    def test_validate_headers_with_all_required_columns(self):
+        """Test that validate_headers returns True when all required columns are present."""
+        headers = ['asset_tag', 'system_type', 'operating_system', 'ip_address', 'particulars']
+        is_valid, missing = self.import_service.validate_headers(headers)
+        
+        self.assertTrue(is_valid)
+        self.assertEqual(len(missing), 0)
+    
+    def test_validate_headers_with_missing_columns(self):
+        """Test that validate_headers returns False and lists missing columns."""
+        headers = ['asset_tag', 'system_type']
+        is_valid, missing = self.import_service.validate_headers(headers)
+        
+        self.assertFalse(is_valid)
+        self.assertEqual(len(missing), 2)
+        self.assertIn('operating_system', missing)
+        self.assertIn('ip_address', missing)
+    
+    def test_validate_headers_with_no_required_columns(self):
+        """Test that validate_headers returns False when no required columns are present."""
+        headers = ['some_column', 'another_column']
+        is_valid, missing = self.import_service.validate_headers(headers)
+        
+        self.assertFalse(is_valid)
+        self.assertEqual(len(missing), 4)
+        self.assertIn('asset_tag', missing)
+        self.assertIn('system_type', missing)
+        self.assertIn('operating_system', missing)
+        self.assertIn('ip_address', missing)
+    
+    def test_validate_headers_with_extra_columns(self):
+        """Test that validate_headers returns True when extra columns are present."""
+        headers = ['asset_tag', 'system_type', 'operating_system', 'ip_address', 'extra_column', 'another_extra']
+        is_valid, missing = self.import_service.validate_headers(headers)
+        
+        self.assertTrue(is_valid)
+        self.assertEqual(len(missing), 0)
+
+    def test_validate_row_with_valid_data(self):
+        """Test that validate_row returns True for valid row data."""
+        # Set up test data
+        os = OperatingSystem.objects.create(name="Windows 10")
+        team = Team.objects.create(name="Engineering")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100',
+            'team': 'Engineering',
+            'warranty_expiration': '2025-12-31'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertTrue(is_valid)
+        self.assertEqual(len(errors), 0)
+    
+    def test_validate_row_with_empty_asset_tag(self):
+        """Test that validate_row returns error for empty asset_tag."""
+        row_data = {
+            'asset_tag': '',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Asset tag is required", errors)
+    
+    def test_validate_row_with_duplicate_asset_tag(self):
+        """Test that validate_row returns error for duplicate asset_tag."""
+        # Create existing asset
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        user = User.objects.create_user(username='testuser', password='password')
+        
+        Asset.objects.create(
+            asset_tag='BIDC001',
+            system_type='Desktop',
+            operating_system=os,
+            ip_address=ip
+        )
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Laptop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.101'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Asset tag already exists", errors)
+    
+    def test_validate_row_with_invalid_system_type(self):
+        """Test that validate_row returns error for invalid system_type."""
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Server',  # Invalid type
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Invalid system type. Must be Desktop, Laptop, or All-in-One PC", errors)
+    
+    def test_validate_row_with_nonexistent_operating_system(self):
+        """Test that validate_row returns error for non-existent operating_system."""
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'NonExistentOS',
+            'ip_address': '192.168.10.100'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Operating System not found", errors)
+    
+    def test_validate_row_with_invalid_ip_address_format(self):
+        """Test that validate_row returns error for invalid IPv4 format."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '999.999.999.999'  # Invalid IP
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Invalid IPv4 address format", errors)
+    
+    def test_validate_row_with_unavailable_ip_address(self):
+        """Test that validate_row returns error for already assigned IP."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=True)
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("IP address not available", errors)
+    
+    def test_validate_row_with_ip_not_in_system(self):
+        """Test that validate_row returns error for IP not in system."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100'  # IP not in database
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("IP address not found in system", errors)
+    
+    def test_validate_row_with_nonexistent_team(self):
+        """Test that validate_row returns error for non-existent team."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100',
+            'team': 'NonExistentTeam'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Team not found", errors)
+    
+    def test_validate_row_with_invalid_warranty_date_format(self):
+        """Test that validate_row returns error for invalid warranty date format."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100',
+            'warranty_expiration': '12/31/2025'  # Wrong format
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertIn("Invalid date format. Use YYYY-MM-DD", errors)
+    
+    def test_validate_row_with_optional_fields_empty(self):
+        """Test that validate_row accepts empty optional fields."""
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        
+        row_data = {
+            'asset_tag': 'BIDC001',
+            'system_type': 'Desktop',
+            'operating_system': 'Windows 10',
+            'ip_address': '192.168.10.100',
+            'team': '',
+            'warranty_expiration': ''
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertTrue(is_valid)
+        self.assertEqual(len(errors), 0)
+    
+    def test_validate_row_with_multiple_errors(self):
+        """Test that validate_row returns all errors for a row with multiple issues."""
+        row_data = {
+            'asset_tag': '',
+            'system_type': 'Server',
+            'operating_system': 'NonExistentOS',
+            'ip_address': '999.999.999.999'
+        }
+        
+        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        
+        self.assertFalse(is_valid)
+        self.assertGreaterEqual(len(errors), 3)  # At least 3 errors
+
+    def test_import_assets_with_valid_excel_file(self):
+        """Test that import_assets successfully imports valid assets from Excel."""
+        import openpyxl
+        from io import BytesIO
+        from django.contrib.auth.models import User
+        
+        # Set up test data
+        os = OperatingSystem.objects.create(name="Windows 10")
+        team = Team.objects.create(name="Engineering")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip1 = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        ip2 = IPAddress.objects.create(address="192.168.10.101", ip_range=ip_range, is_assigned=False)
+        user = User.objects.create_user(username='testuser', password='password')
+        
+        # Create Excel file in memory
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        
+        # Write headers
+        sheet.append(['asset_tag', 'system_type', 'operating_system', 'ip_address', 'particulars', 'assigned_to', 'team', 'warranty_expiration'])
+        
+        # Write data rows
+        sheet.append(['BIDC001', 'Desktop', 'Windows 10', '192.168.10.100', 'Test asset 1', 'John Doe', 'Engineering', '2025-12-31'])
+        sheet.append(['BIDC002', 'Laptop', 'Windows 10', '192.168.10.101', 'Test asset 2', 'Jane Smith', 'Engineering', '2026-01-15'])
+        
+        # Save to BytesIO
+        excel_file = BytesIO()
+        workbook.save(excel_file)
+        excel_file.seek(0)
+        
+        # Import assets
+        result = self.import_service.import_assets(excel_file, user)
+        
+        # Verify results
+        self.assertEqual(result['success_count'], 2)
+        self.assertEqual(result['error_count'], 0)
+        self.assertEqual(len(result['errors']), 0)
+        
+        # Verify assets were created
+        self.assertEqual(Asset.objects.count(), 2)
+        asset1 = Asset.objects.get(asset_tag='BIDC001')
+        self.assertEqual(asset1.system_type, 'Desktop')
+        self.assertEqual(asset1.operating_system.name, 'Windows 10')
+        self.assertEqual(asset1.ip_address.address, '192.168.10.100')
+        self.assertEqual(asset1.assigned_to, 'John Doe')
+        self.assertEqual(asset1.team.name, 'Engineering')
+        
+        # Verify IPs were assigned
+        ip1.refresh_from_db()
+        ip2.refresh_from_db()
+        self.assertTrue(ip1.is_assigned)
+        self.assertTrue(ip2.is_assigned)
+    
+    def test_import_assets_with_validation_errors(self):
+        """Test that import_assets handles validation errors correctly."""
+        import openpyxl
+        from io import BytesIO
+        from django.contrib.auth.models import User
+        
+        # Set up test data
+        os = OperatingSystem.objects.create(name="Windows 10")
+        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
+        ip1 = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
+        user = User.objects.create_user(username='testuser', password='password')
+        
+        # Create Excel file with one valid and one invalid row
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        
+        # Write headers
+        sheet.append(['asset_tag', 'system_type', 'operating_system', 'ip_address'])
+        
+        # Write data rows
+        sheet.append(['BIDC001', 'Desktop', 'Windows 10', '192.168.10.100'])  # Valid
+        sheet.append(['BIDC002', 'Server', 'Windows 10', '192.168.10.101'])  # Invalid system_type
+        
+        # Save to BytesIO
+        excel_file = BytesIO()
+        workbook.save(excel_file)
+        excel_file.seek(0)
+        
+        # Import assets
+        result = self.import_service.import_assets(excel_file, user)
+        
+        # Verify results
+        self.assertEqual(result['success_count'], 1)
+        self.assertEqual(result['error_count'], 1)
+        self.assertEqual(len(result['errors']), 1)
+        self.assertEqual(result['errors'][0]['row'], 3)
+        self.assertIn('Invalid system type', result['errors'][0]['errors'][0])
+        
+        # Verify only valid asset was created
+        self.assertEqual(Asset.objects.count(), 1)
+        self.assertTrue(Asset.objects.filter(asset_tag='BIDC001').exists())
+        self.assertFalse(Asset.objects.filter(asset_tag='BIDC002').exists())
+    
+    def test_import_assets_with_missing_headers(self):
+        """Test that import_assets returns error for missing required headers."""
+        import openpyxl
+        from io import BytesIO
+        from django.contrib.auth.models import User
+        
+        user = User.objects.create_user(username='testuser', password='password')
+        
+        # Create Excel file with missing headers
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        
+        # Write incomplete headers
+        sheet.append(['asset_tag', 'system_type'])  # Missing operating_system and ip_address
+        sheet.append(['BIDC001', 'Desktop'])
+        
+        # Save to BytesIO
+        excel_file = BytesIO()
+        workbook.save(excel_file)
+        excel_file.seek(0)
+        
+        # Import assets
+        result = self.import_service.import_assets(excel_file, user)
+        
+        # Verify results
+        self.assertEqual(result['success_count'], 0)
+        self.assertEqual(result['error_count'], 0)
+        self.assertEqual(len(result['errors']), 1)
+        self.assertEqual(result['errors'][0]['row'], 0)
+        self.assertIn('Missing required columns', result['errors'][0]['errors'][0])
+        
+        # Verify no assets were created
+        self.assertEqual(Asset.objects.count(), 0)
+
+
+
+class TestExportService(TestCase):
+    """Test cases for ExportService."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from assets.services.export_service import ExportService
+        
+        # Create OS and Team
+        self.os = OperatingSystem.objects.create(name="Windows 10")
+        self.team = Team.objects.create(name="IT Department")
+        
+        # Create IP range and address
+        self.ip_range = IPRange.objects.create(
+            range_pattern="192.168.10.x",
+            network_prefix="192.168.10"
+        )
+        self.ip = IPAddress.objects.create(
+            address="192.168.10.1",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        
+        # Create test assets
+        self.asset1 = Asset.objects.create(
+            asset_tag='BIDC001',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=self.ip,
+            assigned_to='John Doe',
+            team=self.team,
+            status='active'
+        )
+        self.asset2 = Asset.objects.create(
+            asset_tag='BIDC002',
+            system_type='Laptop',
+            operating_system=self.os,
+            status='active'
+        )
+        
+        self.export_service = ExportService()
+    
+    def test_create_workbook_with_empty_queryset(self):
+        """Test that _create_workbook handles empty queryset."""
+        from assets.models import Asset
+        
+        queryset = Asset.objects.none()
+        columns = ['Serial Number', 'Asset Tag', 'System Type']
+        title = 'Test Export'
+        
+        workbook = self.export_service._create_workbook(queryset, columns, title)
+        sheet = workbook.active
+        
+        # Check title
+        self.assertEqual(sheet.title, title)
+        
+        # Check headers are present
+        self.assertEqual(sheet.cell(1, 1).value, 'Serial Number')
+        self.assertEqual(sheet.cell(1, 2).value, 'Asset Tag')
+        self.assertEqual(sheet.cell(1, 3).value, 'System Type')
+        
+        # Check no data rows (only header row)
+        self.assertEqual(sheet.max_row, 1)
+    
+    def test_create_workbook_with_data(self):
+        """Test that _create_workbook creates workbook with data."""
+        from assets.models import Asset
+        
+        queryset = Asset.objects.filter(status='active').order_by('serial_number')
+        columns = ['Serial Number', 'Asset Tag', 'System Type']
+        title = 'Active Assets'
+        
+        # Define row extractor function
+        def extract_row(asset):
+            return [
+                asset.serial_number,
+                asset.asset_tag,
+                asset.system_type
+            ]
+        
+        workbook = self.export_service._create_workbook(queryset, columns, title, extract_row)
+        sheet = workbook.active
+        
+        # Check title
+        self.assertEqual(sheet.title, title)
+        
+        # Check headers
+        self.assertEqual(sheet.cell(1, 1).value, 'Serial Number')
+        self.assertEqual(sheet.cell(1, 2).value, 'Asset Tag')
+        self.assertEqual(sheet.cell(1, 3).value, 'System Type')
+        
+        # Check data rows (2 assets + 1 header = 3 rows)
+        self.assertEqual(sheet.max_row, 3)
+        
+        # Check first data row
+        self.assertEqual(sheet.cell(2, 1).value, self.asset1.serial_number)
+        self.assertEqual(sheet.cell(2, 2).value, 'BIDC001')
+        self.assertEqual(sheet.cell(2, 3).value, 'Desktop')
+        
+        # Check second data row
+        self.assertEqual(sheet.cell(3, 1).value, self.asset2.serial_number)
+        self.assertEqual(sheet.cell(3, 2).value, 'BIDC002')
+        self.assertEqual(sheet.cell(3, 3).value, 'Laptop')
+    
+    def test_create_workbook_formats_column_widths(self):
+        """Test that _create_workbook formats column widths appropriately."""
+        from assets.models import Asset
+        
+        queryset = Asset.objects.filter(status='active').order_by('serial_number')
+        columns = ['Serial Number', 'Asset Tag']
+        title = 'Test'
+        
+        def extract_row(asset):
+            return [asset.serial_number, asset.asset_tag]
+        
+        workbook = self.export_service._create_workbook(queryset, columns, title, extract_row)
+        sheet = workbook.active
+        
+        # Check that column widths are set (should be at least 10)
+        self.assertGreaterEqual(sheet.column_dimensions['A'].width, 10)
+        self.assertGreaterEqual(sheet.column_dimensions['B'].width, 10)
+        
+        # Check that column widths don't exceed maximum (50)
+        self.assertLessEqual(sheet.column_dimensions['A'].width, 50)
+        self.assertLessEqual(sheet.column_dimensions['B'].width, 50)
+
+    def test_export_active_assets_returns_http_response(self):
+        """Test that export_active_assets returns HttpResponse with correct headers."""
+        response = self.export_service.export_active_assets()
+        
+        # Check response type
+        from django.http import HttpResponse
+        self.assertIsInstance(response, HttpResponse)
+        
+        # Check content type
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Check Content-Disposition header
+        self.assertEqual(
+            response['Content-Disposition'],
+            'attachment; filename=active_assets.xlsx'
+        )
+    
+    def test_export_active_assets_includes_all_columns(self):
+        """Test that export_active_assets includes all required columns."""
+        import openpyxl
+        from io import BytesIO
+        
+        response = self.export_service.export_active_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check headers
+        expected_headers = [
+            'Serial Number',
+            'Asset Tag',
+            'System Type',
+            'OS',
+            'IP Address',
+            'Assigned To',
+            'Team',
+            'Warranty Expiration'
+        ]
+        
+        for col_idx, expected_header in enumerate(expected_headers, start=1):
+            self.assertEqual(sheet.cell(1, col_idx).value, expected_header)
+    
+    def test_export_active_assets_includes_only_active_assets(self):
+        """Test that export_active_assets includes only active assets."""
+        import openpyxl
+        from io import BytesIO
+        
+        # Create a freed asset
+        Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed'
+        )
+        
+        response = self.export_service.export_active_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Should have 2 active assets + 1 header row = 3 rows
+        self.assertEqual(sheet.max_row, 3)
+    
+    def test_export_active_assets_with_all_fields(self):
+        """Test that export_active_assets correctly exports all fields."""
+        import openpyxl
+        from io import BytesIO
+        from datetime import date
+        
+        # Update asset1 with warranty expiration
+        self.asset1.warranty_expiration = date(2025, 12, 31)
+        self.asset1.save()
+        
+        response = self.export_service.export_active_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check first data row (asset1)
+        self.assertEqual(sheet.cell(2, 1).value, self.asset1.serial_number)
+        self.assertEqual(sheet.cell(2, 2).value, 'BIDC001')
+        self.assertEqual(sheet.cell(2, 3).value, 'Desktop')
+        self.assertEqual(sheet.cell(2, 4).value, 'Windows 10')
+        self.assertEqual(sheet.cell(2, 5).value, '192.168.10.1')
+        self.assertEqual(sheet.cell(2, 6).value, 'John Doe')
+        self.assertEqual(sheet.cell(2, 7).value, 'IT Department')
+        self.assertEqual(sheet.cell(2, 8).value, '2025-12-31')
+    
+    def test_export_active_assets_with_empty_optional_fields(self):
+        """Test that export_active_assets handles empty optional fields."""
+        import openpyxl
+        from io import BytesIO
+        
+        response = self.export_service.export_active_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check second data row (asset2 has no IP, assigned_to, team, warranty)
+        self.assertEqual(sheet.cell(3, 1).value, self.asset2.serial_number)
+        self.assertEqual(sheet.cell(3, 2).value, 'BIDC002')
+        self.assertEqual(sheet.cell(3, 3).value, 'Laptop')
+        self.assertEqual(sheet.cell(3, 4).value, 'Windows 10')
+        # Empty cells return empty string or None in openpyxl
+        self.assertIn(sheet.cell(3, 5).value, ['', None])  # No IP
+        self.assertIn(sheet.cell(3, 6).value, ['', None])  # No assigned_to
+        self.assertIn(sheet.cell(3, 7).value, ['', None])  # No team
+        self.assertIn(sheet.cell(3, 8).value, ['', None])  # No warranty
+
+    def test_export_freed_assets_returns_http_response(self):
+        """Test that export_freed_assets returns HttpResponse with correct headers."""
+        response = self.export_service.export_freed_assets()
+        
+        # Check response type
+        from django.http import HttpResponse
+        self.assertIsInstance(response, HttpResponse)
+        
+        # Check content type
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Check Content-Disposition header
+        self.assertEqual(
+            response['Content-Disposition'],
+            'attachment; filename=freed_assets.xlsx'
+        )
+    
+    def test_export_freed_assets_includes_all_columns(self):
+        """Test that export_freed_assets includes all required columns."""
+        import openpyxl
+        from io import BytesIO
+        
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check headers
+        expected_headers = [
+            'Serial Number',
+            'Asset Tag',
+            'System Type',
+            'OS',
+            'IP Address',
+            'Freed Date'
+        ]
+        
+        for col_idx, expected_header in enumerate(expected_headers, start=1):
+            self.assertEqual(sheet.cell(1, col_idx).value, expected_header)
+    
+    def test_export_freed_assets_includes_only_freed_assets(self):
+        """Test that export_freed_assets includes only freed assets."""
+        import openpyxl
+        from io import BytesIO
+        from django.utils import timezone
+        
+        # Create freed assets
+        freed_asset1 = Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+        freed_asset2 = Asset.objects.create(
+            asset_tag='BIDC004',
+            system_type='Laptop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+        
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Should have 2 freed assets + 1 header row = 3 rows
+        self.assertEqual(sheet.max_row, 3)
+        
+        # Verify active assets are not included
+        asset_tags = [sheet.cell(row, 2).value for row in range(2, sheet.max_row + 1)]
+        self.assertIn('BIDC003', asset_tags)
+        self.assertIn('BIDC004', asset_tags)
+        self.assertNotIn('BIDC001', asset_tags)  # Active asset
+        self.assertNotIn('BIDC002', asset_tags)  # Active asset
+    
+    def test_export_freed_assets_ordered_by_freed_date_descending(self):
+        """Test that export_freed_assets orders by freed_date descending."""
+        import openpyxl
+        from io import BytesIO
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Create freed assets with different freed dates
+        now = timezone.now()
+        freed_asset1 = Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=now - timedelta(days=2)  # Older
+        )
+        freed_asset2 = Asset.objects.create(
+            asset_tag='BIDC004',
+            system_type='Laptop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=now  # Newer
+        )
+        
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # First data row should be the newer freed asset (BIDC004)
+        self.assertEqual(sheet.cell(2, 2).value, 'BIDC004')
+        # Second data row should be the older freed asset (BIDC003)
+        self.assertEqual(sheet.cell(3, 2).value, 'BIDC003')
+    
+    def test_export_freed_assets_with_all_fields(self):
+        """Test that export_freed_assets correctly exports all fields."""
+        import openpyxl
+        from io import BytesIO
+        from django.utils import timezone
+        
+        # Create IP for freed asset
+        ip2 = IPAddress.objects.create(
+            address="192.168.10.2",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        
+        # Create freed asset with all fields
+        freed_date = timezone.now()
+        freed_asset = Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=ip2,
+            status='freed',
+            freed_date=freed_date
+        )
+        
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check first data row
+        self.assertEqual(sheet.cell(2, 1).value, freed_asset.serial_number)
+        self.assertEqual(sheet.cell(2, 2).value, 'BIDC003')
+        self.assertEqual(sheet.cell(2, 3).value, 'Desktop')
+        self.assertEqual(sheet.cell(2, 4).value, 'Windows 10')
+        self.assertEqual(sheet.cell(2, 5).value, '192.168.10.2')
+        # Check freed date is present (format: YYYY-MM-DD HH:MM:SS)
+        self.assertIsNotNone(sheet.cell(2, 6).value)
+        self.assertIn(freed_date.strftime('%Y-%m-%d'), sheet.cell(2, 6).value)
+    
+    def test_export_freed_assets_with_empty_optional_fields(self):
+        """Test that export_freed_assets handles empty optional fields."""
+        import openpyxl
+        from io import BytesIO
+        from django.utils import timezone
+        
+        # Create freed asset without IP and freed_date
+        freed_asset = Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='Laptop',
+            operating_system=self.os,
+            status='freed'
+            # No ip_address, no freed_date
+        )
+        
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check data row
+        self.assertEqual(sheet.cell(2, 1).value, freed_asset.serial_number)
+        self.assertEqual(sheet.cell(2, 2).value, 'BIDC003')
+        self.assertEqual(sheet.cell(2, 3).value, 'Laptop')
+        self.assertEqual(sheet.cell(2, 4).value, 'Windows 10')
+        # Empty cells return empty string or None in openpyxl
+        self.assertIn(sheet.cell(2, 5).value, ['', None])  # No IP
+        self.assertIn(sheet.cell(2, 6).value, ['', None])  # No freed_date
+    
+    def test_export_freed_assets_with_empty_queryset(self):
+        """Test that export_freed_assets handles empty queryset (no freed assets)."""
+        import openpyxl
+        from io import BytesIO
+        
+        # No freed assets exist, only active ones
+        response = self.export_service.export_freed_assets()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Should have only header row
+        self.assertEqual(sheet.max_row, 1)
+        
+        # Check headers are present
+        self.assertEqual(sheet.cell(1, 1).value, 'Serial Number')
+        self.assertEqual(sheet.cell(1, 2).value, 'Asset Tag')
+
+    def test_export_free_ips_returns_http_response(self):
+        """Test that export_free_ips returns HttpResponse with correct headers."""
+        response = self.export_service.export_free_ips()
+        
+        # Check response type
+        from django.http import HttpResponse
+        self.assertIsInstance(response, HttpResponse)
+        
+        # Check content type
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Check Content-Disposition header
+        self.assertEqual(
+            response['Content-Disposition'],
+            'attachment; filename=free_ips.xlsx'
+        )
+    
+    def test_export_free_ips_includes_all_columns(self):
+        """Test that export_free_ips includes all required columns."""
+        import openpyxl
+        from io import BytesIO
+        
+        response = self.export_service.export_free_ips()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check headers
+        expected_headers = [
+            'IP Address',
+            'IP Range'
+        ]
+        
+        for col_idx, expected_header in enumerate(expected_headers, start=1):
+            self.assertEqual(sheet.cell(1, col_idx).value, expected_header)
+    
+    def test_export_free_ips_includes_only_free_ips(self):
+        """Test that export_free_ips includes only unassigned IP addresses."""
+        import openpyxl
+        from io import BytesIO
+        
+        # Create additional free IPs
+        free_ip1 = IPAddress.objects.create(
+            address="192.168.10.5",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        free_ip2 = IPAddress.objects.create(
+            address="192.168.10.10",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        
+        # Create an assigned IP
+        assigned_ip = IPAddress.objects.create(
+            address="192.168.10.20",
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        
+        response = self.export_service.export_free_ips()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Should have 3 free IPs (self.ip + free_ip1 + free_ip2) + 1 header row = 4 rows
+        self.assertEqual(sheet.max_row, 4)
+        
+        # Verify assigned IP is not included
+        ip_addresses = [sheet.cell(row, 1).value for row in range(2, sheet.max_row + 1)]
+        self.assertIn('192.168.10.1', ip_addresses)
+        self.assertIn('192.168.10.5', ip_addresses)
+        self.assertIn('192.168.10.10', ip_addresses)
+        self.assertNotIn('192.168.10.20', ip_addresses)  # Assigned IP
+    
+    def test_export_free_ips_ordered_by_range_and_address(self):
+        """Test that export_free_ips orders by IP range then by address."""
+        import openpyxl
+        from io import BytesIO
+        
+        # Create another IP range
+        ip_range2 = IPRange.objects.create(
+            range_pattern="192.168.11.x",
+            network_prefix="192.168.11"
+        )
+        
+        # Create IPs in different ranges
+        ip1 = IPAddress.objects.create(
+            address="192.168.11.5",
+            ip_range=ip_range2,
+            is_assigned=False
+        )
+        ip2 = IPAddress.objects.create(
+            address="192.168.10.100",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        ip3 = IPAddress.objects.create(
+            address="192.168.10.50",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+        
+        response = self.export_service.export_free_ips()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Verify ordering: IPs should be grouped by range and ordered by address within range
+        # Expected order depends on range_pattern ordering
+        ip_addresses = [sheet.cell(row, 1).value for row in range(2, sheet.max_row + 1)]
+        ip_ranges = [sheet.cell(row, 2).value for row in range(2, sheet.max_row + 1)]
+        
+        # All IPs should be present
+        self.assertIn('192.168.10.1', ip_addresses)
+        self.assertIn('192.168.10.50', ip_addresses)
+        self.assertIn('192.168.10.100', ip_addresses)
+        self.assertIn('192.168.11.5', ip_addresses)
+        
+        # All ranges should be present
+        self.assertIn('192.168.10.x', ip_ranges)
+        self.assertIn('192.168.11.x', ip_ranges)
+    
+    def test_export_free_ips_with_all_fields(self):
+        """Test that export_free_ips correctly exports all fields."""
+        import openpyxl
+        from io import BytesIO
+        
+        response = self.export_service.export_free_ips()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Check first data row (self.ip)
+        self.assertEqual(sheet.cell(2, 1).value, '192.168.10.1')
+        self.assertEqual(sheet.cell(2, 2).value, '192.168.10.x')
+    
+    def test_export_free_ips_with_empty_queryset(self):
+        """Test that export_free_ips handles empty queryset (no free IPs)."""
+        import openpyxl
+        from io import BytesIO
+        
+        # Mark all IPs as assigned
+        IPAddress.objects.all().update(is_assigned=True)
+        
+        response = self.export_service.export_free_ips()
+        
+        # Load workbook from response
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Should have only header row
+        self.assertEqual(sheet.max_row, 1)
+        
+        # Check headers are present
+        self.assertEqual(sheet.cell(1, 1).value, 'IP Address')
+        self.assertEqual(sheet.cell(1, 2).value, 'IP Range')
+
+
+
+class TestFilterService(TestCase):
+    """Test cases for FilterService."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from assets.services.filter_service import FilterService
+        
+        # Create OS
+        self.os1 = OperatingSystem.objects.create(name="Windows 10")
+        self.os2 = OperatingSystem.objects.create(name="Ubuntu 20.04")
+        
+        # Create teams
+        self.team1 = Team.objects.create(name="Engineering")
+        self.team2 = Team.objects.create(name="Marketing")
+        
+        # Create assets
+        self.asset1 = Asset.objects.create(
+            asset_tag="BIDC001",
+            system_type="Desktop",
+            operating_system=self.os1,
+            assigned_to="John Doe",
+            team=self.team1,
+            status="active"
+        )
+        self.asset2 = Asset.objects.create(
+            asset_tag="BIDC002",
+            system_type="Laptop",
+            operating_system=self.os2,
+            assigned_to="Jane Smith",
+            team=self.team2,
+            status="active"
+        )
+        self.asset3 = Asset.objects.create(
+            asset_tag="BIDC003",
+            system_type="Desktop",
+            operating_system=self.os1,
+            assigned_to="Bob Johnson",
+            team=self.team1,
+            status="active"
+        )
+        
+        self.filter_service = FilterService()
+    
+    def test_filter_by_os(self):
+        """Test filtering assets by operating system."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_os(queryset, self.os1.id)
+        
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+        self.assertNotIn(self.asset2, filtered)
+    
+    def test_filter_by_asset_tag(self):
+        """Test filtering assets by asset tag (partial match)."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_asset_tag(queryset, "BIDC001")
+        
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_filter_by_asset_tag_case_insensitive(self):
+        """Test that asset tag filter is case-insensitive."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_asset_tag(queryset, "bidc001")
+        
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_filter_by_asset_tag_partial_match(self):
+        """Test that asset tag filter supports partial matching."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_asset_tag(queryset, "BIDC")
+        
+        self.assertEqual(filtered.count(), 3)
+    
+    def test_filter_by_team(self):
+        """Test filtering assets by team."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_team(queryset, self.team1.id)
+        
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+        self.assertNotIn(self.asset2, filtered)
+    
+    def test_filter_by_assigned_user(self):
+        """Test filtering assets by assigned user name."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_assigned_user(queryset, "John Doe")
+        
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_filter_by_assigned_user_case_insensitive(self):
+        """Test that assigned user filter is case-insensitive."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_assigned_user(queryset, "john doe")
+        
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_filter_by_assigned_user_partial_match(self):
+        """Test that assigned user filter supports partial matching."""
+        queryset = Asset.objects.filter(status='active')
+        filtered = self.filter_service.filter_by_assigned_user(queryset, "John")
+        
+        # Should match "John Doe" and "Bob Johnson"
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+
+    def test_apply_filters_single_os(self):
+        """Test applying a single OS filter."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {'operating_system': self.os1.id}
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+        self.assertNotIn(self.asset2, filtered)
+    
+    def test_apply_filters_single_asset_tag(self):
+        """Test applying a single asset tag filter."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {'asset_tag': 'BIDC001'}
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_apply_filters_single_team(self):
+        """Test applying a single team filter."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {'team': self.team1.id}
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+    
+    def test_apply_filters_single_assigned_to(self):
+        """Test applying a single assigned_to filter."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {'assigned_to': 'John'}
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+    
+    def test_apply_filters_multiple_and_logic(self):
+        """Test applying multiple filters with AND logic."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': self.os1.id,
+            'team': self.team1.id
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        # Both asset1 and asset3 have os1 and team1
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+    
+    def test_apply_filters_multiple_narrow_results(self):
+        """Test that multiple filters narrow down results."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': self.os1.id,
+            'assigned_to': 'John Doe'
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        # Only asset1 matches both criteria
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_apply_filters_all_filters(self):
+        """Test applying all four filters together."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': self.os1.id,
+            'asset_tag': 'BIDC001',
+            'team': self.team1.id,
+            'assigned_to': 'John'
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        # Only asset1 matches all criteria
+        self.assertEqual(filtered.count(), 1)
+        self.assertIn(self.asset1, filtered)
+    
+    def test_apply_filters_no_matches(self):
+        """Test applying filters that result in no matches."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': self.os1.id,
+            'team': self.team2.id  # os1 assets are in team1, not team2
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 0)
+    
+    def test_apply_filters_empty_dict(self):
+        """Test applying empty filters dict returns original queryset."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {}
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        self.assertEqual(filtered.count(), 3)
+        self.assertEqual(list(filtered), list(queryset))
+    
+    def test_apply_filters_none_values(self):
+        """Test that None values in filters are ignored."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': None,
+            'asset_tag': None,
+            'team': self.team1.id,
+            'assigned_to': None
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        # Only team filter should be applied
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)
+    
+    def test_apply_filters_empty_string_values(self):
+        """Test that empty string values in filters are ignored."""
+        queryset = Asset.objects.filter(status='active')
+        filters = {
+            'operating_system': '',
+            'asset_tag': '',
+            'team': self.team1.id,
+            'assigned_to': ''
+        }
+        filtered = self.filter_service.apply_filters(queryset, filters)
+        
+        # Only team filter should be applied
+        self.assertEqual(filtered.count(), 2)
+        self.assertIn(self.asset1, filtered)
+        self.assertIn(self.asset3, filtered)

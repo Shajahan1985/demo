@@ -230,3 +230,211 @@
     }
     */
 }
+
+/* ===== Mobile Import Form Enhancements ===== */
+@media (max-width: 768px) {
+    .import-instructions ul {
+        margin-left: 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .import-instructions li {
+        margin-bottom: 0.75rem;
+    }
+    
+    input[type="file"] {
+        font-size: 0.875rem;
+        padding: 0.625rem;
+    }
+    
+    .form-group input[type="file"]::file-selector-button {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        margin-right: 0.75rem;
+    }
+}
+
+/* ===== Mobile Filter Enhancements ===== */
+@media (max-width: 768px) {
+    .filter-section {
+        margin-bottom: 1.5rem;
+    }
+    
+    .filter-badge {
+        font-size: 0.8125rem;
+        padding: 0.25rem 0.625rem;
+    }
+    
+    .filter-field label {
+        font-size: 0.8125rem;
+    }
+    
+    /* Ensure filter dropdowns are touch-friendly */
+    .filter-field select.form-control {
+        min-height: 44px;
+    }
+    
+    .filter-field input.form-control {
+        min-height: 44px;
+    }
+}
+
+/* ===== Mobile Import Results Table ===== */
+@media (max-width: 768px) {
+    .error-details {
+        padding: 1rem;
+        margin-top: 1.5rem;
+    }
+    
+    .error-details h2 {
+        font-size: 1.125rem;
+    }
+    
+    /* Make error table more readable on mobile */
+    .error-details .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .error-list li {
+        font-size: 0.8125rem;
+        padding: 0.375rem 0;
+    }
+}
+
+/* ===== Mobile Export Button Positioning ===== */
+@media (max-width: 768px) {
+    .header-actions {
+        gap: 0.75rem;
+    }
+    
+    .header-actions > div {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    
+    .header-actions .btn-success,
+    .header-actions .btn-primary {
+        width: 100%;
+    }
+}
+
+/* ===== Landscape Mode Adjustments for Filters ===== */
+@media (max-width: 768px) and (orientation: landscape) {
+    .filter-fields {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .filter-actions {
+        flex-direction: row;
+    }
+    
+    .filter-actions .btn {
+        width: auto;
+        min-width: 120px;
+    }
+}
+
+/* ===== Small Phone Import Form ===== */
+@media (max-width: 360px) {
+    .import-instructions h2 {
+        font-size: 1.125rem;
+    }
+    
+    .import-instructions h3 {
+        font-size: 1rem;
+    }
+    
+    .import-form-section h2 {
+        font-size: 1.125rem;
+    }
+    
+    input[type="file"] {
+        font-size: 0.8125rem;
+        padding: 0.5rem;
+    }
+    
+    .form-group input[type="file"]::file-selector-button {
+        padding: 0.375rem 0.625rem;
+        font-size: 0.8125rem;
+        margin-right: 0.5rem;
+    }
+}
+
+/* ===== Touch Feedback for Interactive Elements ===== */
+@media (max-width: 768px) {
+    .btn:active {
+        transform: scale(0.98);
+    }
+    
+    .filter-actions .btn:active {
+        transform: scale(0.98);
+    }
+    
+    /* Better visual feedback for file input */
+    input[type="file"]:active {
+        background-color: #d6ebff;
+    }
+}
+
+/* ===== Tablet-Specific Filter Layout ===== */
+@media (min-width: 769px) and (max-width: 992px) {
+    .filter-fields {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .import-instructions {
+        padding: 1.25rem;
+    }
+    
+    .import-form-section {
+        padding: 1.5rem;
+    }
+}
+
+/* ===== Accessibility: High Contrast Mode Support ===== */
+@media (prefers-contrast: high) {
+    .filter-section {
+        border-width: 2px;
+    }
+    
+    .import-form-section {
+        border-width: 3px;
+    }
+    
+    input[type="file"] {
+        border-width: 3px;
+    }
+    
+    .btn {
+        border: 2px solid transparent;
+    }
+    
+    .btn-primary {
+        border-color: #2980b9;
+    }
+    
+    .btn-success {
+        border-color: #229954;
+    }
+    
+    .btn-secondary {
+        border-color: #5a6268;
+    }
+}
+
+/* ===== Reduced Motion Support ===== */
+@media (prefers-reduced-motion: reduce) {
+    .btn,
+    .alert,
+    .filter-badge,
+    input[type="file"] {
+        animation: none;
+        transition: none;
+    }
+    
+    .btn:hover {
+        transform: none;
+    }
+}

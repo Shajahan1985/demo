@@ -6,14 +6,59 @@ from django.db import models
 from assets.models import Asset, OperatingSystem, Team, IPAddress
 
 
+class HierarchicalTeamChoiceField(forms.ModelChoiceField):
+    """Custom form field for displaying teams hierarchically."""
+    
+    def __init__(self, *args, **kwargs):
+        kwargs['queryset'] = Team.objects.get_hierarchy()
+        super().__init__(*args, **kwargs)
+    
+    def label_from_instance(self, obj):
+        """Return label with hierarchy indentation."""
+        if obj.parent:
+            return f"  └─ {obj.name}"
+        return obj.name
+
+
 class AssetForm(forms.ModelForm):
     """Form for creating and updating assets."""
+    
+    parent_team = forms.ModelChoiceField(
+        queryset=Team.objects.get_parent_teams(),
+        required=False,
+        empty_label="Select Team",
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+            'id': 'id_parent_team',
+            'onchange': 'handleParentTeamChange(this.value)'
+        }),
+        label='Team'
+    )
+    
+    sub_team = forms.ModelChoiceField(
+        queryset=Team.objects.none(),
+        required=False,
+        empty_label="Select Sub-Team",
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+            'id': 'id_sub_team',
+            'style': 'display:none;'
+        }),
+        label='Sub-Team'
+    )
+    
+    team = forms.ModelChoiceField(
+        queryset=Team.objects.all(),
+        required=False,
+        widget=forms.HiddenInput()
+    )
     
     class Meta:
         model = Asset
         fields = [
             'asset_tag',
             'system_type',
+            'hardware_serial_number',
             'operating_system',
             'ip_address',
             'particulars',
@@ -26,7 +71,14 @@ class AssetForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'e.g., BIDC001'
             }),
-            'system_type': forms.Select(attrs={'class': 'form-control'}),
+            'system_type': forms.Select(attrs={
+                'class': 'form-control'
+            }),
+            'hardware_serial_number': forms.TextInput(attrs={
+                'class': 'form-control',
+                'id': 'id_hardware_serial_number',
+                'placeholder': 'Enter hardware serial number'
+            }),
             'operating_system': forms.Select(attrs={'class': 'form-control'}),
             'ip_address': forms.Select(attrs={'class': 'form-control'}),
             'particulars': forms.Textarea(attrs={
@@ -38,7 +90,6 @@ class AssetForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'Enter person name'
             }),
-            'team': forms.Select(attrs={'class': 'form-control'}),
             'warranty_expiration': forms.DateInput(attrs={
                 'class': 'form-control',
                 'type': 'date'
@@ -47,6 +98,7 @@ class AssetForm(forms.ModelForm):
         labels = {
             'asset_tag': 'Asset Tag',
             'system_type': 'System Type',
+            'hardware_serial_number': 'Hardware Serial Number',
             'operating_system': 'Operating System',
             'ip_address': 'IP Address',
             'particulars': 'Particulars',
@@ -62,10 +114,22 @@ class AssetForm(forms.ModelForm):
         self.fields['operating_system'].queryset = OperatingSystem.objects.all()
         self.fields['operating_system'].empty_label = "Select Operating System"
         
-        # Populate team dropdown
-        self.fields['team'].queryset = Team.objects.all()
-        self.fields['team'].empty_label = "Select Team"
-        self.fields['team'].required = False
+        # Hardware serial number is not required by default (will be validated in clean())
+        self.fields['hardware_serial_number'].required = False
+        
+        # Handle team cascading dropdown
+        if self.instance and self.instance.pk and self.instance.team:
+            current_team = self.instance.team
+            if current_team.parent:
+                # Asset is assigned to a sub-team
+                self.fields['parent_team'].initial = current_team.parent
+                self.fields['sub_team'].queryset = current_team.parent.sub_teams.all()
+                self.fields['sub_team'].initial = current_team
+                self.fields['sub_team'].widget.attrs['style'] = ''
+            else:
+                # Asset is assigned to a parent team
+                self.fields['parent_team'].initial = current_team
+            self.fields['team'].initial = current_team
         
         # Populate IP address dropdown with only available IPs
         # For updates, include the currently assigned IP
@@ -89,6 +153,36 @@ class AssetForm(forms.ModelForm):
         self.fields['assigned_to'].required = False
         self.fields['particulars'].required = False
         self.fields['warranty_expiration'].required = False
+        self.fields['parent_team'].required = False
+        self.fields['sub_team'].required = False
+    
+    def clean(self):
+        """Custom validation to set the team field based on parent_team and sub_team."""
+        cleaned_data = super().clean()
+        parent_team = cleaned_data.get('parent_team')
+        sub_team = cleaned_data.get('sub_team')
+        system_type = cleaned_data.get('system_type')
+        hardware_serial_number = cleaned_data.get('hardware_serial_number')
+        
+        print(f"[FORM VALIDATION] System Type: {system_type}")
+        print(f"[FORM VALIDATION] Hardware Serial Number: '{hardware_serial_number}'")
+        
+        # Validate hardware serial number for Laptop and All-in-One PC
+        if system_type in ['Laptop', 'All-in-One PC']:
+            print(f"[FORM VALIDATION] Checking hardware serial number for {system_type}")
+            if not hardware_serial_number or not hardware_serial_number.strip():
+                print("[FORM VALIDATION] Adding error - hardware serial number is required")
+                self.add_error('hardware_serial_number', 'Hardware serial number is required for Laptop and All-in-One PC.')
+        
+        # Determine which team to assign
+        if sub_team:
+            cleaned_data['team'] = sub_team
+        elif parent_team:
+            cleaned_data['team'] = parent_team
+        else:
+            cleaned_data['team'] = None
+        
+        return cleaned_data
     
     def clean_asset_tag(self):
         """Validate asset tag uniqueness."""

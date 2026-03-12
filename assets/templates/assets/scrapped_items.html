@@ -3,7 +3,10 @@
 {% block title %}Scrapped Items - Asset Tracker{% endblock %}
 
 {% block content %}
-<h1>Scrapped Items</h1>
+<div class="header-actions">
+    <h1>Scrapped Items</h1>
+    <a href="{% url 'export_scrapped_assets' %}" class="btn btn-success">Export to Excel</a>
+</div>
 
 {% if messages %}
     {% for message in messages %}

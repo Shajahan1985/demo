@@ -3,7 +3,10 @@
 {% block title %}Free Systems - Asset Tracker{% endblock %}
 
 {% block content %}
-<h1>Free Systems</h1>
+<div class="header-actions">
+    <h1>Free Systems</h1>
+    <a href="{% url 'export_freed_assets' %}" class="btn btn-success">Export to Excel</a>
+</div>
 
 {% if messages %}
     {% for message in messages %}

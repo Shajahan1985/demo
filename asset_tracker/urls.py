@@ -16,9 +16,17 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
+from rest_framework.routers import DefaultRouter
+from assets.api_views import TeamViewSet
+
+# Create API router
+router = DefaultRouter()
+router.register(r'teams', TeamViewSet, basename='team')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('authentication.urls')),
     path('assets/', include('assets.urls')),
+    path('api/', include(router.urls)),
 ]

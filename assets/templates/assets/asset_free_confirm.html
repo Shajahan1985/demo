@@ -18,7 +18,19 @@
     <p><strong>Asset Tag:</strong> {{ asset.asset_tag }}</p>
     <p><strong>System Type:</strong> {{ asset.system_type }}</p>
     <p><strong>Assigned To:</strong> {{ asset.assigned_to|default:"N/A" }}</p>
-    <p><strong>Team:</strong> {{ asset.team|default:"N/A" }}</p>
+    <p><strong>Team:</strong> 
+        {% if asset.team %}
+            {% if asset.team.name == "Not Applicable" %}
+                Not Applicable
+            {% elif asset.team.parent %}
+                {{ asset.team.parent.name }} > {{ asset.team.name }}
+            {% else %}
+                {{ asset.team.name }}
+            {% endif %}
+        {% else %}
+            N/A
+        {% endif %}
+    </p>
 </div>
 
 <p><strong>Do you want to free this system?</strong></p>

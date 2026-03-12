@@ -28,7 +28,19 @@
                 <td>{{ asset.operating_system.name }}</td>
                 <td>{{ asset.ip_address.address|default:"N/A" }}</td>
                 <td>{{ asset.assigned_to|default:"N/A" }}</td>
-                <td>{{ asset.team.name|default:"N/A" }}</td>
+                <td>
+                    {% if asset.team %}
+                        {% if asset.team.name == "Not Applicable" %}
+                            Not Applicable
+                        {% elif asset.team.parent %}
+                            {{ asset.team.parent.name }} > {{ asset.team.name }}
+                        {% else %}
+                            {{ asset.team.name }}
+                        {% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
                 <td>{{ asset.warranty_expiration|date:"Y-m-d" }}</td>
                 <td>
                     {% if asset.warranty_expiration < today %}

@@ -291,6 +291,8 @@ location /static/ {
 pip install -r requirements.txt
 ```
 
+**Note**: The requirements include `openpyxl>=3.1.2` for Excel import/export functionality.
+
 ### 2. Run Migrations
 
 ```bash
@@ -315,6 +317,16 @@ Log into Django admin and verify that the following roles exist:
 - **Admin**: Full access to user and role management
 - **Manager**: Can view users and manage assets
 - **User**: Basic user access
+
+### 5. Set Up Excel Import Template (Optional)
+
+The system includes a sample Excel import template. Ensure the `media/templates/` directory exists:
+
+```bash
+mkdir -p media/templates
+```
+
+The sample template will be available for download from the import page.
 
 ---
 
@@ -499,6 +511,10 @@ After deployment, verify the following:
 - [ ] Static files loading correctly
 - [ ] All pages accessible
 - [ ] Permission checks working
+- [ ] Excel import page accessible (admin only)
+- [ ] Excel export buttons visible (all authenticated users)
+- [ ] Asset filtering working correctly
+- [ ] Sample import template downloadable
 
 ### Database Verification
 
@@ -575,6 +591,40 @@ Verify Nginx/Apache configuration for static files.
 - Check `SESSION_EXPIRE_AT_BROWSER_CLOSE` setting
 - Ensure session backend is working
 - Check for session cleanup tasks
+
+#### 6. Excel Import Not Working
+
+**Problem**: Import page returns errors or file upload fails
+
+**Solution**:
+- Verify `openpyxl` is installed: `pip install openpyxl>=3.1.2`
+- Check file size is under 10MB
+- Verify file format is .xlsx or .xls
+- Check `media/templates/` directory exists and is writable
+- Review import error messages for specific validation issues
+- Ensure Operating Systems and Teams exist before importing
+
+#### 7. Excel Export Not Downloading
+
+**Problem**: Export button doesn't trigger download
+
+**Solution**:
+- Verify user is authenticated
+- Check browser console for JavaScript errors
+- Verify export view URLs are configured correctly
+- Check that `openpyxl` is installed
+- Review server logs for errors during export generation
+
+#### 8. Asset Filters Not Working
+
+**Problem**: Filters don't narrow down results
+
+**Solution**:
+- Verify "Apply Filters" button is clicked
+- Check that filter form is submitting correctly
+- Review browser console for JavaScript errors
+- Verify FilterService is properly configured
+- Check database indexes on filtered fields
 
 ### Logs
 

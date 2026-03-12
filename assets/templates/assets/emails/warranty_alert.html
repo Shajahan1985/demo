@@ -97,7 +97,9 @@
                 {% if asset.assigned_to %}
                 <div style="font-size: 0.9em; color: #6c757d;">
                     Assigned to: {{ asset.assigned_to }}
-                    {% if asset.team %} ({{ asset.team.name }}){% endif %}
+                    {% if asset.team %}
+                        ({% if asset.team.name == "Not Applicable" %}Not Applicable{% elif asset.team.parent %}{{ asset.team.parent.name }} > {{ asset.team.name }}{% else %}{{ asset.team.name }}{% endif %})
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>

@@ -1,4 +1,5 @@
 {% extends "assets/base.html" %}
+{% load static %}
 
 {% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Asset - Asset Tracker{% endblock %}
 
@@ -45,6 +46,17 @@
         {% endif %}
     </div>
     
+    <div class="form-group" id="hardware_serial_number_group">
+        <label for="{{ form.hardware_serial_number.id_for_label }}">{{ form.hardware_serial_number.label }}</label>
+        {{ form.hardware_serial_number }}
+        {% if form.hardware_serial_number.errors %}
+            {% for error in form.hardware_serial_number.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        <div class="help-text">Required for Laptop and All-in-One PC only</div>
+    </div>
+    
     <div class="form-group">
         <label for="{{ form.operating_system.id_for_label }}" class="required">{{ form.operating_system.label }}</label>
         {{ form.operating_system }}
@@ -76,14 +88,26 @@
     </div>
     
     <div class="form-group">
-        <label for="{{ form.team.id_for_label }}">{{ form.team.label }}</label>
-        {{ form.team }}
-        {% if form.team.errors %}
-            {% for error in form.team.errors %}
+        <label for="{{ form.parent_team.id_for_label }}">{{ form.parent_team.label }}</label>
+        {{ form.parent_team }}
+        {% if form.parent_team.errors %}
+            {% for error in form.parent_team.errors %}
                 <div class="error-message">{{ error }}</div>
             {% endfor %}
         {% endif %}
     </div>
+    
+    <div class="form-group" id="sub_team_group">
+        <label for="{{ form.sub_team.id_for_label }}">{{ form.sub_team.label }}</label>
+        {{ form.sub_team }}
+        {% if form.sub_team.errors %}
+            {% for error in form.sub_team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    {{ form.team }}
     
     <div class="form-group">
         <label for="{{ form.warranty_expiration.id_for_label }}">{{ form.warranty_expiration.label }}</label>
@@ -151,4 +175,70 @@
         <a href="{% url 'asset_list' %}" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
+
 {% endblock %}
+
+{% block extra_js %}
+<script>
+// Team Cascading (global function for inline handler)
+function handleParentTeamChange(parentId) {
+    const subTeamSelect = document.getElementById('id_sub_team');
+    const hiddenTeamInput = document.getElementById('id_team');
+    
+    if (!parentId) {
+        subTeamSelect.style.display = 'none';
+        subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+        hiddenTeamInput.value = '';
+        return;
+    }
+    
+    hiddenTeamInput.value = parentId;
+    
+    fetch(`/assets/api/get-sub-teams/?parent_id=${parentId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_sub_teams) {
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+                data.sub_teams.forEach(subTeam => {
+                    const option = document.createElement('option');
+                    option.value = subTeam.id;
+                    option.textContent = subTeam.name;
+                    subTeamSelect.appendChild(option);
+                });
+                subTeamSelect.style.display = 'block';
+            } else {
+                subTeamSelect.style.display = 'none';
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching sub-teams:', error);
+            subTeamSelect.style.display = 'none';
+        });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    // Team cascading - initialize on page load
+    const parentTeamSelect = document.getElementById('id_parent_team');
+    if (parentTeamSelect && parentTeamSelect.value) {
+        handleParentTeamChange(parentTeamSelect.value);
+    }
+    
+    const subTeamSelect = document.getElementById('id_sub_team');
+    if (subTeamSelect) {
+        subTeamSelect.addEventListener('change', function() {
+            const hiddenTeamInput = document.getElementById('id_team');
+            const parentTeamSelect = document.getElementById('id_parent_team');
+            if (this.value) {
+                hiddenTeamInput.value = this.value;
+            } else {
+                hiddenTeamInput.value = parentTeamSelect.value;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+
+

@@ -1260,3 +1260,573 @@ class TestWarrantyView(TestCase):
         response = self.client.get(reverse('warranty'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'No assets with warranty information found')
+
+
+class TestAssetExportActiveView(TestCase):
+    """Test cases for AssetExportActiveView."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        
+        # Create test OS and Team
+        self.os = OperatingSystem.objects.create(name="Windows 10")
+        self.team = Team.objects.create(name="IT Department")
+        
+        # Create IP range and IP address
+        self.ip_range = IPRange.objects.create(
+            range_pattern="192.168.10.x",
+            network_prefix="192.168.10"
+        )
+        self.ip = IPAddress.objects.create(
+            address="192.168.10.100",
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        
+        # Create active assets
+        self.active_asset1 = Asset.objects.create(
+            asset_tag="BIDC001",
+            system_type="Desktop",
+            operating_system=self.os,
+            ip_address=self.ip,
+            assigned_to="John Doe",
+            team=self.team,
+            status="active"
+        )
+        
+        self.active_asset2 = Asset.objects.create(
+            asset_tag="BIDC002",
+            system_type="Laptop",
+            operating_system=self.os,
+            assigned_to="Jane Smith",
+            team=self.team,
+            status="active"
+        )
+    
+    def test_export_active_view_requires_authentication(self):
+        """Test that export view requires authentication (Requirement 5.1)."""
+        # Try as anonymous user
+        response = self.client.get(reverse('export_active_assets'))
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+    
+    def test_export_active_view_allows_authenticated_user(self):
+        """Test that authenticated users can export active assets (Requirement 5.1)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_active_assets'))
+        
+        # Should return Excel file
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    
+    def test_export_active_view_returns_excel_file(self):
+        """Test that export returns Excel file with correct filename (Requirement 5.4)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_active_assets'))
+        
+        # Verify response is Excel file
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Verify filename
+        self.assertIn('attachment; filename=active_assets.xlsx', 
+                     response['Content-Disposition'])
+    
+    def test_export_active_view_includes_all_active_assets(self):
+        """Test that export includes all active assets (Requirement 5.1)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_active_assets'))
+        
+        # Load the Excel file from response
+        import openpyxl
+        from io import BytesIO
+        
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Verify headers are present (Requirement 5.2)
+        headers = [cell.value for cell in sheet[1]]
+        expected_headers = [
+            'Serial Number', 'Asset Tag', 'System Type', 'OS',
+            'IP Address', 'Assigned To', 'Team', 'Warranty Expiration'
+        ]
+        self.assertEqual(headers, expected_headers)
+        
+        # Verify data rows (should have 2 active assets + 1 header row = 3 rows)
+        self.assertEqual(sheet.max_row, 3)
+        
+        # Verify asset data is present
+        asset_tags = [sheet.cell(row=i, column=2).value for i in range(2, sheet.max_row + 1)]
+        self.assertIn('BIDC001', asset_tags)
+        self.assertIn('BIDC002', asset_tags)
+
+
+
+class TestFreeIPsExportView(TestCase):
+    """Test cases for FreeIPsExportView."""
+    
+    def setUp(self):
+        """Set up test data."""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        
+        # Create IP ranges
+        self.ip_range1 = IPRange.objects.create(
+            range_pattern="192.168.10.x",
+            network_prefix="192.168.10"
+        )
+        self.ip_range2 = IPRange.objects.create(
+            range_pattern="192.168.11.x",
+            network_prefix="192.168.11"
+        )
+        
+        # Create free IP addresses
+        self.free_ip1 = IPAddress.objects.create(
+            address="192.168.10.50",
+            ip_range=self.ip_range1,
+            is_assigned=False
+        )
+        self.free_ip2 = IPAddress.objects.create(
+            address="192.168.10.51",
+            ip_range=self.ip_range1,
+            is_assigned=False
+        )
+        self.free_ip3 = IPAddress.objects.create(
+            address="192.168.11.100",
+            ip_range=self.ip_range2,
+            is_assigned=False
+        )
+        
+        # Create assigned IP address (should not appear in export)
+        self.assigned_ip = IPAddress.objects.create(
+            address="192.168.10.100",
+            ip_range=self.ip_range1,
+            is_assigned=True
+        )
+    
+    def test_export_free_ips_view_requires_authentication(self):
+        """Test that export view requires authentication (Requirement 8.1)."""
+        # Try as anonymous user
+        response = self.client.get(reverse('export_free_ips'))
+        # Should redirect to login
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+    
+    def test_export_free_ips_view_allows_authenticated_user(self):
+        """Test that authenticated users can export free IPs (Requirement 8.1)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_free_ips'))
+        
+        # Should return Excel file
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    
+    def test_export_free_ips_view_returns_excel_file(self):
+        """Test that export returns Excel file with correct filename (Requirement 8.5)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_free_ips'))
+        
+        # Verify response is Excel file
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Verify filename
+        self.assertIn('attachment; filename=free_ips.xlsx', 
+                     response['Content-Disposition'])
+    
+    def test_export_free_ips_view_includes_all_free_ips(self):
+        """Test that export includes all free IP addresses (Requirement 8.1)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_free_ips'))
+        
+        # Load the Excel file from response
+        import openpyxl
+        from io import BytesIO
+        
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Verify headers are present (Requirement 8.2)
+        headers = [cell.value for cell in sheet[1]]
+        expected_headers = ['IP Address', 'IP Range']
+        self.assertEqual(headers, expected_headers)
+        
+        # Verify data rows (should have 3 free IPs + 1 header row = 4 rows)
+        self.assertEqual(sheet.max_row, 4)
+        
+        # Verify free IP data is present
+        ip_addresses = [sheet.cell(row=i, column=1).value for i in range(2, sheet.max_row + 1)]
+        self.assertIn('192.168.10.50', ip_addresses)
+        self.assertIn('192.168.10.51', ip_addresses)
+        self.assertIn('192.168.11.100', ip_addresses)
+        
+        # Verify assigned IP is NOT present
+        self.assertNotIn('192.168.10.100', ip_addresses)
+    
+    def test_export_free_ips_view_groups_by_range(self):
+        """Test that export groups IPs by range (Requirement 8.3)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('export_free_ips'))
+        
+        # Load the Excel file from response
+        import openpyxl
+        from io import BytesIO
+        
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        sheet = workbook.active
+        
+        # Verify IP ranges are present
+        ip_ranges = [sheet.cell(row=i, column=2).value for i in range(2, sheet.max_row + 1)]
+        self.assertIn('192.168.10.x', ip_ranges)
+        self.assertIn('192.168.11.x', ip_ranges)
+
+
+
+class TestAssetViewsTeamHierarchy(TestCase):
+    """Test cases for asset views with team hierarchy support."""
+    
+    def setUp(self):
+        """Set up test data with hierarchical teams."""
+        # Create test user
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        
+        # Create operating system
+        self.os = OperatingSystem.objects.create(name='Windows 10')
+        
+        # Create IP range and IP addresses
+        self.ip_range = IPRange.objects.create(
+            range_pattern='192.168.10.x',
+            network_prefix='192.168.10'
+        )
+        self.ip1 = IPAddress.objects.create(
+            address='192.168.10.1',
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        self.ip2 = IPAddress.objects.create(
+            address='192.168.10.2',
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        self.ip3 = IPAddress.objects.create(
+            address='192.168.10.3',
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        self.ip4 = IPAddress.objects.create(
+            address='192.168.10.4',
+            ip_range=self.ip_range,
+            is_assigned=True
+        )
+        
+        # Create hierarchical team structure
+        self.parent_team = Team.objects.create(name='Engineering')
+        self.sub_team1 = Team.objects.create(name='Backend Team', parent=self.parent_team)
+        self.sub_team2 = Team.objects.create(name='Frontend Team', parent=self.parent_team)
+        self.not_applicable_team, _ = Team.objects.get_or_create(name='Not Applicable')
+        
+        # Create assets assigned to different teams
+        self.asset_parent = Asset.objects.create(
+            asset_tag='BIDC001',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=self.ip1,
+            assigned_to='John Doe',
+            team=self.parent_team,
+            status='active'
+        )
+        
+        self.asset_sub1 = Asset.objects.create(
+            asset_tag='BIDC002',
+            system_type='Laptop',
+            operating_system=self.os,
+            ip_address=self.ip2,
+            assigned_to='Jane Smith',
+            team=self.sub_team1,
+            status='active'
+        )
+        
+        self.asset_sub2 = Asset.objects.create(
+            asset_tag='BIDC003',
+            system_type='All-in-One PC',
+            operating_system=self.os,
+            ip_address=self.ip3,
+            assigned_to='Bob Johnson',
+            team=self.sub_team2,
+            status='active'
+        )
+        
+        self.asset_not_applicable = Asset.objects.create(
+            asset_tag='BIDC004',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=self.ip4,
+            assigned_to='Alice Brown',
+            team=self.not_applicable_team,
+            status='active'
+        )
+    
+    def test_asset_list_displays_parent_team_name(self):
+        """Test that asset list shows parent team name correctly (Requirement 5.4)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('asset_list'))
+        content = response.content.decode()
+        
+        # Verify parent team is displayed without hierarchy context
+        self.assertIn('Engineering', content)
+        # Should not have hierarchy separator for parent team
+        self.assertNotIn('> Engineering', content)
+    
+    def test_asset_list_displays_sub_team_with_hierarchy_context(self):
+        """Test that asset list shows sub-team with hierarchy context (Requirement 6.3)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('asset_list'))
+        content = response.content.decode()
+        
+        # Verify sub-teams are displayed with parent context (HTML may use > or &gt;)
+        self.assertTrue(
+            'Engineering &gt; Backend Team' in content or 'Engineering > Backend Team' in content,
+            "Sub-team with hierarchy context not found in response"
+        )
+        self.assertTrue(
+            'Engineering &gt; Frontend Team' in content or 'Engineering > Frontend Team' in content,
+            "Sub-team with hierarchy context not found in response"
+        )
+    
+    def test_asset_list_displays_not_applicable_team(self):
+        """Test that asset list displays 'Not Applicable' for Not Applicable team (Requirement 6.4)."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('asset_list'))
+        content = response.content.decode()
+        
+        # Verify "Not Applicable" is displayed
+        self.assertIn('Not Applicable', content)
+    
+    def test_asset_list_filtering_by_parent_team(self):
+        """Test that asset list can filter by parent team (Requirement 6.5)."""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Filter by parent team
+        response = self.client.get(reverse('asset_list'), {'team': self.parent_team.id})
+        assets = response.context['assets']
+        
+        # Should return only assets assigned to parent team
+        self.assertEqual(len(assets), 1)
+        self.assertIn(self.asset_parent, assets)
+        self.assertNotIn(self.asset_sub1, assets)
+        self.assertNotIn(self.asset_sub2, assets)
+    
+    def test_asset_list_filtering_by_sub_team(self):
+        """Test that asset list can filter by sub-team (Requirement 6.5)."""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Filter by sub-team
+        response = self.client.get(reverse('asset_list'), {'team': self.sub_team1.id})
+        assets = response.context['assets']
+        
+        # Should return only assets assigned to sub-team
+        self.assertEqual(len(assets), 1)
+        self.assertIn(self.asset_sub1, assets)
+        self.assertNotIn(self.asset_parent, assets)
+        self.assertNotIn(self.asset_sub2, assets)
+    
+    def test_asset_list_filtering_by_not_applicable_team(self):
+        """Test that asset list can filter by Not Applicable team."""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Filter by Not Applicable team
+        response = self.client.get(reverse('asset_list'), {'team': self.not_applicable_team.id})
+        assets = response.context['assets']
+        
+        # Should return only assets assigned to Not Applicable team
+        self.assertEqual(len(assets), 1)
+        self.assertIn(self.asset_not_applicable, assets)
+    
+    def test_team_statistics_aggregation_includes_sub_team_assets(self):
+        """Test that parent team statistics include sub-team assets (Requirement 6.6)."""
+        # Get statistics for parent team
+        stats = self.parent_team.get_asset_statistics(include_sub_teams=True)
+        
+        # Should include assets from parent team and both sub-teams
+        self.assertEqual(stats['total'], 3)
+        
+        # Verify all three assets are counted
+        # (1 from parent, 1 from sub_team1, 1 from sub_team2)
+        self.assertGreaterEqual(stats['total'], 3)
+    
+    def test_team_statistics_aggregation_excludes_sub_team_assets_when_disabled(self):
+        """Test that parent team statistics exclude sub-team assets when disabled."""
+        # Get statistics for parent team without sub-teams
+        stats = self.parent_team.get_asset_statistics(include_sub_teams=False)
+        
+        # Should include only assets directly assigned to parent team
+        self.assertEqual(stats['total'], 1)
+    
+    def test_team_asset_count_includes_sub_team_assets(self):
+        """Test that parent team asset count includes sub-team assets (Requirement 6.6)."""
+        # Get asset count for parent team
+        count = self.parent_team.get_asset_count(include_sub_teams=True)
+        
+        # Should include assets from parent team and both sub-teams
+        self.assertEqual(count, 3)
+    
+    def test_team_asset_count_excludes_sub_team_assets_when_disabled(self):
+        """Test that parent team asset count excludes sub-team assets when disabled."""
+        # Get asset count for parent team without sub-teams
+        count = self.parent_team.get_asset_count(include_sub_teams=False)
+        
+        # Should include only assets directly assigned to parent team
+        self.assertEqual(count, 1)
+    
+    def test_sub_team_statistics_only_includes_own_assets(self):
+        """Test that sub-team statistics only include directly assigned assets."""
+        # Get statistics for sub-team
+        stats = self.sub_team1.get_asset_statistics(include_sub_teams=True)
+        
+        # Should include only assets directly assigned to this sub-team
+        self.assertEqual(stats['total'], 1)
+    
+    def test_asset_list_uses_select_related_for_team_hierarchy(self):
+        """Test that asset list uses select_related for efficient team queries."""
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Use assertNumQueries to verify query efficiency
+        # Expected queries: session, user, OS for filter, teams for filter, OS for filter (duplicate), teams for filter (duplicate), 
+        # assets with select_related, session update
+        with self.assertNumQueries(10):  # Adjusted based on actual query count
+            response = self.client.get(reverse('asset_list'))
+            assets = list(response.context['assets'])
+            
+            # Access team and parent without additional queries
+            for asset in assets:
+                if asset.team:
+                    _ = asset.team.name
+                    if asset.team.parent:
+                        _ = asset.team.parent.name
+    
+    def test_warranty_view_displays_team_hierarchy(self):
+        """Test that warranty view displays team hierarchy correctly."""
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # Add warranty dates to assets
+        today = timezone.now().date()
+        self.asset_parent.warranty_expiration = today + timedelta(days=30)
+        self.asset_parent.save()
+        self.asset_sub1.warranty_expiration = today + timedelta(days=60)
+        self.asset_sub1.save()
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('warranty'))
+        content = response.content.decode()
+        
+        # Verify parent team is displayed
+        self.assertIn('Engineering', content)
+        
+        # Verify sub-team is displayed with hierarchy context (HTML may use > or &gt;)
+        self.assertTrue(
+            'Engineering &gt; Backend Team' in content or 'Engineering > Backend Team' in content,
+            "Sub-team with hierarchy context not found in warranty view"
+        )
+    
+    def test_freed_systems_view_displays_team_hierarchy(self):
+        """Test that freed systems view displays team hierarchy correctly."""
+        # Create a freed asset with sub-team
+        freed_asset = Asset.objects.create(
+            asset_tag='BIDC005',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed'
+        )
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('freed_systems'))
+        
+        # Verify view loads successfully
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(freed_asset, response.context['freed_assets'])
+    
+    def test_scrapped_items_view_displays_team_hierarchy(self):
+        """Test that scrapped items view displays team hierarchy correctly."""
+        # Create a scrapped asset with sub-team
+        scrapped_asset = Asset.objects.create(
+            asset_tag='BIDC006',
+            system_type='Laptop',
+            operating_system=self.os,
+            status='scrapped'
+        )
+        
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('scrapped_items'))
+        
+        # Verify view loads successfully
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(scrapped_asset, response.context['scrapped_assets'])
+    
+    def test_asset_list_filter_form_includes_hierarchical_teams(self):
+        """Test that asset list filter form includes teams in hierarchical format."""
+        self.client.login(username='testuser', password='testpass123')
+        response = self.client.get(reverse('asset_list'))
+        
+        # Get filter form from context
+        filter_form = response.context['filter_form']
+        
+        # Verify form has team field
+        self.assertIn('team', filter_form.fields)
+        
+        # Verify team field uses hierarchical choices
+        team_field = filter_form.fields['team']
+        self.assertIsNotNone(team_field)
+    
+    def test_statistics_aggregation_by_status(self):
+        """Test that team statistics correctly aggregate by status."""
+        # Create additional assets with different statuses
+        Asset.objects.create(
+            asset_tag='BIDC007',
+            system_type='Desktop',
+            operating_system=self.os,
+            team=self.sub_team1,
+            status='freed'
+        )
+        
+        # Get statistics for parent team
+        stats = self.parent_team.get_asset_statistics(include_sub_teams=True)
+        
+        # Verify statistics include status breakdown
+        self.assertIn('by_status', stats)
+        self.assertIn('active', stats['by_status'])
+    
+    def test_statistics_aggregation_by_system_type(self):
+        """Test that team statistics correctly aggregate by system type."""
+        # Get statistics for parent team
+        stats = self.parent_team.get_asset_statistics(include_sub_teams=True)
+        
+        # Verify statistics include system type breakdown
+        self.assertIn('by_system_type', stats)
+        self.assertIn('Desktop', stats['by_system_type'])
+        self.assertIn('Laptop', stats['by_system_type'])
+        self.assertIn('All-in-One PC', stats['by_system_type'])

@@ -22,7 +22,10 @@
 {% endblock %}
 
 {% block content %}
-<h1>Free IP Addresses</h1>
+<div class="header-actions">
+    <h1>Free IP Addresses</h1>
+    <a href="{% url 'export_free_ips' %}" class="btn btn-success">Export to Excel</a>
+</div>
 
 {% if messages %}
     {% for message in messages %}
