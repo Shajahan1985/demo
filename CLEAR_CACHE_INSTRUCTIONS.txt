@@ -1,0 +1,32 @@
+IMPORTANT: CLEAR YOUR BROWSER CACHE NOW!
+
+The JavaScript file has been moved to a separate file. You MUST clear your browser cache.
+
+METHOD 1 - Hard Refresh (EASIEST):
+1. Go to http://127.0.0.1:8000/assets/create/
+2. Press Ctrl + Shift + R (or Ctrl + F5)
+3. This will force reload all files
+
+METHOD 2 - Clear Cache in Developer Tools:
+1. Press F12 to open Developer Tools
+2. Right-click on the refresh button (next to address bar)
+3. Select "Empty Cache and Hard Reload"
+
+METHOD 3 - Use Incognito Mode:
+1. Press Ctrl + Shift + N
+2. Go to http://127.0.0.1:8000/
+3. Login and test
+
+AFTER CLEARING CACHE:
+1. Press F12 to open console
+2. Go to http://127.0.0.1:8000/assets/create/
+3. You should see this message in console:
+   "[Asset Form] Script loaded"
+   
+4. If you see that message, select "Laptop" from System Type dropdown
+5. The Hardware Serial Number field should appear
+
+IF YOU STILL SEE NOTHING IN CONSOLE:
+- Try closing the browser completely and reopening
+- Try a different browser (Chrome, Edge, Firefox)
+- Make sure JavaScript is enabled in your browser

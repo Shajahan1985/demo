@@ -1,0 +1,61 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Import Results - Asset Tracker{% endblock %}
+
+{% block content %}
+<div class="header-actions">
+    <h1>Import Results</h1>
+</div>
+
+<!-- Success Summary -->
+{% if success_count > 0 %}
+<div class="alert alert-success">
+    <strong>Success!</strong> {{ success_count }} asset(s) imported successfully.
+</div>
+{% endif %}
+
+<!-- Error Summary -->
+{% if error_count > 0 %}
+<div class="alert alert-danger">
+    <strong>Errors Found:</strong> {{ error_count }} row(s) had errors and were not imported.
+</div>
+
+<!-- Detailed Error List -->
+<div class="error-details">
+    <h2>Error Details</h2>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Row Number</th>
+                    <th>Asset Tag</th>
+                    <th>Error Messages</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for error in errors %}
+                <tr>
+                    <td>{{ error.row }}</td>
+                    <td>{{ error.data.asset_tag|default:"N/A" }}</td>
+                    <td>
+                        <ul class="error-list">
+                            {% for err_msg in error.errors %}
+                            <li>{{ err_msg }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Action Buttons -->
+<div class="form-actions">
+    <a href="{% url 'asset_list' %}" class="btn btn-primary">Back to Assets</a>
+    <a href="{% url 'asset_import' %}" class="btn btn-secondary">Import More Assets</a>
+</div>
+
+{% endblock %}

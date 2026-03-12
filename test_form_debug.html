@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Form Debug Test</title>
+    <style>
+        .form-group { margin: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        select, input { padding: 5px; width: 300px; }
+        .required::after { content: " *"; color: red; }
+    </style>
+</head>
+<body>
+    <h1>Hardware Serial Number Field Test</h1>
+    
+    <div class="form-group">
+        <label for="id_system_type" class="required">System Type</label>
+        <select id="id_system_type" class="form-control" onchange="handleSystemTypeChange(this.value)">
+            <option value="">Select System Type</option>
+            <option value="Desktop">Desktop</option>
+            <option value="Laptop">Laptop</option>
+            <option value="All-in-One PC">All-in-One PC</option>
+        </select>
+    </div>
+    
+    <div class="form-group" id="hardware_serial_number_group" style="display:none;">
+        <label for="id_hardware_serial_number" class="required">Hardware Serial Number</label>
+        <input type="text" id="id_hardware_serial_number" class="form-control" placeholder="Enter hardware serial number">
+    </div>
+    
+    <div id="debug-output" style="margin: 20px; padding: 10px; background: #f0f0f0; border: 1px solid #ccc;">
+        <h3>Debug Output:</h3>
+        <div id="debug-messages"></div>
+    </div>
+
+    <script>
+    function logDebug(message) {
+        const debugDiv = document.getElementById('debug-messages');
+        const timestamp = new Date().toLocaleTimeString();
+        debugDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+        console.log(message);
+    }
+
+    function handleSystemTypeChange(systemType) {
+        logDebug('handleSystemTypeChange called with: ' + systemType);
+        
+        const hardwareSerialNumberGroup = document.getElementById('hardware_serial_number_group');
+        const hardwareSerialNumberInput = document.getElementById('id_hardware_serial_number');
+        
+        logDebug('hardwareSerialNumberGroup found: ' + (hardwareSerialNumberGroup !== null));
+        logDebug('hardwareSerialNumberInput found: ' + (hardwareSerialNumberInput !== null));
+        
+        // Show/hide and make required for Laptop and All-in-One PC
+        if (systemType === 'Laptop' || systemType === 'All-in-One PC') {
+            logDebug('Showing hardware serial number field');
+            if (hardwareSerialNumberGroup) {
+                hardwareSerialNumberGroup.style.display = 'block';
+                logDebug('Set display to block');
+            }
+            if (hardwareSerialNumberInput) {
+                hardwareSerialNumberInput.required = true;
+                hardwareSerialNumberInput.style.display = 'block';
+                logDebug('Set input required and visible');
+            }
+        } else {
+            logDebug('Hiding hardware serial number field');
+            if (hardwareSerialNumberGroup) {
+                hardwareSerialNumberGroup.style.display = 'none';
+                logDebug('Set display to none');
+            }
+            if (hardwareSerialNumberInput) {
+                hardwareSerialNumberInput.required = false;
+                hardwareSerialNumberInput.value = '';
+                logDebug('Cleared input value and removed required');
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        logDebug('DOM Content Loaded');
+        
+        const systemTypeSelect = document.getElementById('id_system_type');
+        logDebug('systemTypeSelect found: ' + (systemTypeSelect !== null));
+        
+        if (systemTypeSelect) {
+            logDebug('Initial system type value: ' + systemTypeSelect.value);
+            if (systemTypeSelect.value) {
+                handleSystemTypeChange(systemTypeSelect.value);
+            }
+        }
+    });
+    </script>
+</body>
+</html>

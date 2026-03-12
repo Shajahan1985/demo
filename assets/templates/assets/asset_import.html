@@ -1,0 +1,77 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Import Assets - Asset Tracker{% endblock %}
+
+{% block content %}
+<div class="header-actions">
+    <h1>Import Assets from Excel</h1>
+    <a href="{% url 'asset_list' %}" class="btn btn-secondary">Back to Assets</a>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="import-instructions">
+    <h2>Instructions</h2>
+    <p>Upload an Excel file (.xlsx or .xls) containing asset data to import multiple assets at once.</p>
+    
+    <h3>Required Columns:</h3>
+    <ul>
+        <li><strong>asset_tag</strong> - Unique identifier (e.g., BIDC123)</li>
+        <li><strong>system_type</strong> - Must be one of: Desktop, Laptop, All-in-One PC</li>
+        <li><strong>operating_system</strong> - Must match an existing OS name in the system</li>
+        <li><strong>ip_address</strong> - Valid IPv4 address that is not already assigned</li>
+    </ul>
+    
+    <h3>Optional Columns:</h3>
+    <ul>
+        <li><strong>particulars</strong> - Additional details about the asset</li>
+        <li><strong>assigned_to</strong> - Name of the person assigned to this asset</li>
+        <li><strong>team</strong> - Must match an existing team name in the system</li>
+        <li><strong>warranty_expiration</strong> - Date in YYYY-MM-DD format</li>
+    </ul>
+    
+    <div class="alert alert-info">
+        <strong>Download Sample Template:</strong> 
+        <a href="{% url 'asset_import' %}?download_template=1" class="btn btn-sm btn-primary">Download Excel Template</a>
+        <p style="margin-top: 10px;">Use this template as a starting point for your import file.</p>
+    </div>
+</div>
+
+<div class="import-form-section">
+    <h2>Upload Excel File</h2>
+    <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+        
+        <div class="form-group">
+            <label for="{{ form.file.id_for_label }}" class="required">{{ form.file.label }}</label>
+            {{ form.file }}
+            {% if form.file.errors %}
+                {% for error in form.file.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.file.help_text %}
+                <div class="help-text">{{ form.file.help_text }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Import Assets</button>
+            <a href="{% url 'asset_list' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

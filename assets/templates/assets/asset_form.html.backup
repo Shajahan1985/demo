@@ -1,0 +1,419 @@
+{% extends "assets/base.html" %}
+{% load static %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Asset - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>{% if form.instance.pk %}Edit{% else %}Create New{% endif %} Asset</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-group">
+        <label for="{{ form.asset_tag.id_for_label }}" class="required">{{ form.asset_tag.label }}</label>
+        {{ form.asset_tag }}
+        {% if form.asset_tag.errors %}
+            {% for error in form.asset_tag.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        {% if form.asset_tag.help_text %}
+            <div class="help-text">{{ form.asset_tag.help_text }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.system_type.id_for_label }}" class="required">{{ form.system_type.label }}</label>
+        {{ form.system_type }}
+        {% if form.system_type.errors %}
+            {% for error in form.system_type.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group" id="hardware_serial_number_group" style="display:none;">
+        <label for="{{ form.hardware_serial_number.id_for_label }}">{{ form.hardware_serial_number.label }}</label>
+        {{ form.hardware_serial_number }}
+        {% if form.hardware_serial_number.errors %}
+            {% for error in form.hardware_serial_number.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+        {% if form.hardware_serial_number.help_text %}
+            <div class="help-text">{{ form.hardware_serial_number.help_text }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.operating_system.id_for_label }}" class="required">{{ form.operating_system.label }}</label>
+        {{ form.operating_system }}
+        {% if form.operating_system.errors %}
+            {% for error in form.operating_system.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.ip_address.id_for_label }}">{{ form.ip_address.label }}</label>
+        {{ form.ip_address }}
+        {% if form.ip_address.errors %}
+            {% for error in form.ip_address.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.assigned_to.id_for_label }}">{{ form.assigned_to.label }}</label>
+        {{ form.assigned_to }}
+        {% if form.assigned_to.errors %}
+            {% for error in form.assigned_to.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.parent_team.id_for_label }}">{{ form.parent_team.label }}</label>
+        {{ form.parent_team }}
+        {% if form.parent_team.errors %}
+            {% for error in form.parent_team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group" id="sub_team_group">
+        <label for="{{ form.sub_team.id_for_label }}">{{ form.sub_team.label }}</label>
+        {{ form.sub_team }}
+        {% if form.sub_team.errors %}
+            {% for error in form.sub_team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    {{ form.team }}
+    
+    <div class="form-group">
+        <label for="{{ form.warranty_expiration.id_for_label }}">{{ form.warranty_expiration.label }}</label>
+        {{ form.warranty_expiration }}
+        {% if form.warranty_expiration.errors %}
+            {% for error in form.warranty_expiration.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.particulars.id_for_label }}">{{ form.particulars.label }}</label>
+        {{ form.particulars }}
+        {% if form.particulars.errors %}
+            {% for error in form.particulars.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    {% if form.instance.pk %}
+    <!-- Existing Attachments Section -->
+    <div class="form-group">
+        <label>Existing Attachments</label>
+        {% if form.instance.attachments.all %}
+            <div class="attachments-list">
+                {% for attachment in form.instance.attachments.all %}
+                    <div class="attachment-item">
+                        <span class="attachment-name">
+                            <a href="{{ attachment.file.url }}" target="_blank">{{ attachment.filename }}</a>
+                        </span>
+                        <span class="attachment-date">Uploaded: {{ attachment.uploaded_at|date:"Y-m-d H:i" }}</span>
+                        <form method="post" action="{% url 'delete_attachment' attachment.pk %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this attachment?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="no-attachments">No attachments yet.</p>
+        {% endif %}
+    </div>
+    
+    <!-- File Upload Section -->
+    <div class="form-group">
+        <label for="attachment_file">Add New Attachment</label>
+        <input type="file" name="attachment_file" id="attachment_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.doc,.docx,.xls,.xlsx,.txt,.zip">
+        <div class="help-text">Maximum file size: 10MB. Allowed types: PDF, images (JPG, PNG, GIF, BMP), documents (DOC, DOCX, XLS, XLSX, TXT, ZIP)</div>
+    </div>
+    {% else %}
+    <!-- File Upload Section for New Assets -->
+    <div class="form-group">
+        <label for="attachment_file">Add Attachment (Optional)</label>
+        <input type="file" name="attachment_file" id="attachment_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.doc,.docx,.xls,.xlsx,.txt,.zip">
+        <div class="help-text">Maximum file size: 10MB. Allowed types: PDF, images (JPG, PNG, GIF, BMP), documents (DOC, DOCX, XLS, XLSX, TXT, ZIP)</div>
+    </div>
+    {% endif %}
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+            {% if form.instance.pk %}Update{% else %}Create{% endif %} Asset
+        </button>
+        <a href="{% url 'asset_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+
+<script>
+alert('JavaScript is NOW loading!');
+console.log('=== SCRIPT IN CONTENT BLOCK ===');
+
+// Hardware Serial Number Field Toggle
+function handleSystemTypeChange(systemType) {
+    console.log('[Hardware Serial] Called with:', systemType);
+    
+    const group = document.getElementById('hardware_serial_number_group');
+    const input = document.getElementById('id_hardware_serial_number');
+    
+    if (systemType === 'Laptop' || systemType === 'All-in-One PC') {
+        console.log('[Hardware Serial] SHOWING');
+        if (group) group.style.display = 'block';
+        if (input) input.required = true;
+    } else {
+        console.log('[Hardware Serial] HIDING');
+        if (group) group.style.display = 'none';
+        if (input) {
+            input.required = false;
+            input.value = '';
+        }
+    }
+}
+
+// Team Cascading
+function handleParentTeamChange(parentId) {
+    const subTeamSelect = document.getElementById('id_sub_team');
+    const hiddenTeamInput = document.getElementById('id_team');
+    
+    if (!parentId) {
+        subTeamSelect.style.display = 'none';
+        subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+        hiddenTeamInput.value = '';
+        return;
+    }
+    
+    hiddenTeamInput.value = parentId;
+    
+    fetch(`/assets/api/get-sub-teams/?parent_id=${parentId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_sub_teams) {
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+                data.sub_teams.forEach(subTeam => {
+                    const option = document.createElement('option');
+                    option.value = subTeam.id;
+                    option.textContent = subTeam.name;
+                    subTeamSelect.appendChild(option);
+                });
+                subTeamSelect.style.display = 'block';
+            } else {
+                subTeamSelect.style.display = 'none';
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching sub-teams:', error);
+            subTeamSelect.style.display = 'none';
+        });
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== DOM LOADED ===');
+    
+    // Team cascading
+    const parentTeamSelect = document.getElementById('id_parent_team');
+    if (parentTeamSelect && parentTeamSelect.value) {
+        handleParentTeamChange(parentTeamSelect.value);
+    }
+    
+    const subTeamSelect = document.getElementById('id_sub_team');
+    if (subTeamSelect) {
+        subTeamSelect.addEventListener('change', function() {
+            const hiddenTeamInput = document.getElementById('id_team');
+            const parentTeamSelect = document.getElementById('id_parent_team');
+            if (this.value) {
+                hiddenTeamInput.value = this.value;
+            } else {
+                hiddenTeamInput.value = parentTeamSelect.value;
+            }
+        });
+    }
+    
+    // Hardware serial number
+    const systemTypeSelect = document.getElementById('id_system_type');
+    console.log('=== SYSTEM TYPE ===', systemTypeSelect);
+    
+    if (systemTypeSelect) {
+        if (systemTypeSelect.value) {
+            handleSystemTypeChange(systemTypeSelect.value);
+        }
+        
+        systemTypeSelect.addEventListener('change', function() {
+            console.log('=== CHANGE ===', this.value);
+            handleSystemTypeChange(this.value);
+        });
+        
+        console.log('=== LISTENER ATTACHED ===');
+    } else {
+        console.error('=== SYSTEM TYPE NOT FOUND ===');
+    }
+    
+    console.log('=== INIT COMPLETE ===');
+});
+
+console.log('=== SCRIPT LOADED ===');
+</script>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+alert('JavaScript is loading!');
+console.log('=== ASSET FORM SCRIPT STARTING ===');
+
+// Hardware Serial Number Field Toggle
+function handleSystemTypeChange(systemType) {
+    console.log('[Hardware Serial] Function called with:', systemType);
+    
+    const hardwareSerialNumberGroup = document.getElementById('hardware_serial_number_group');
+    const hardwareSerialNumberInput = document.getElementById('id_hardware_serial_number');
+    
+    console.log('[Hardware Serial] Group found:', hardwareSerialNumberGroup !== null);
+    console.log('[Hardware Serial] Input found:', hardwareSerialNumberInput !== null);
+    
+    if (systemType === 'Laptop' || systemType === 'All-in-One PC') {
+        console.log('[Hardware Serial] SHOWING field');
+        if (hardwareSerialNumberGroup) {
+            hardwareSerialNumberGroup.style.display = 'block';
+        }
+        if (hardwareSerialNumberInput) {
+            hardwareSerialNumberInput.required = true;
+        }
+    } else {
+        console.log('[Hardware Serial] HIDING field');
+        if (hardwareSerialNumberGroup) {
+            hardwareSerialNumberGroup.style.display = 'none';
+        }
+        if (hardwareSerialNumberInput) {
+            hardwareSerialNumberInput.required = false;
+            hardwareSerialNumberInput.value = '';
+        }
+    }
+}
+
+// Team Cascading Dropdown
+function handleParentTeamChange(parentId) {
+    const subTeamSelect = document.getElementById('id_sub_team');
+    const hiddenTeamInput = document.getElementById('id_team');
+    
+    if (!parentId) {
+        subTeamSelect.style.display = 'none';
+        subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+        hiddenTeamInput.value = '';
+        return;
+    }
+    
+    hiddenTeamInput.value = parentId;
+    
+    fetch(`/assets/api/get-sub-teams/?parent_id=${parentId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_sub_teams) {
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+                data.sub_teams.forEach(subTeam => {
+                    const option = document.createElement('option');
+                    option.value = subTeam.id;
+                    option.textContent = subTeam.name;
+                    subTeamSelect.appendChild(option);
+                });
+                subTeamSelect.style.display = 'block';
+            } else {
+                subTeamSelect.style.display = 'none';
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching sub-teams:', error);
+            subTeamSelect.style.display = 'none';
+        });
+}
+
+// Initialize everything
+console.log('=== SETTING UP EVENT LISTENERS ===');
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== DOM LOADED ===');
+    
+    // Initialize team cascading
+    const parentTeamSelect = document.getElementById('id_parent_team');
+    if (parentTeamSelect && parentTeamSelect.value) {
+        handleParentTeamChange(parentTeamSelect.value);
+    }
+    
+    const subTeamSelect = document.getElementById('id_sub_team');
+    if (subTeamSelect) {
+        subTeamSelect.addEventListener('change', function() {
+            const hiddenTeamInput = document.getElementById('id_team');
+            const parentTeamSelect = document.getElementById('id_parent_team');
+            if (this.value) {
+                hiddenTeamInput.value = this.value;
+            } else {
+                hiddenTeamInput.value = parentTeamSelect.value;
+            }
+        });
+    }
+    
+    // Initialize hardware serial number field
+    const systemTypeSelect = document.getElementById('id_system_type');
+    console.log('=== SYSTEM TYPE SELECT ===', systemTypeSelect);
+    
+    if (systemTypeSelect) {
+        console.log('System type value:', systemTypeSelect.value);
+        
+        // Initialize visibility
+        if (systemTypeSelect.value) {
+            handleSystemTypeChange(systemTypeSelect.value);
+        }
+        
+        // Add event listener
+        systemTypeSelect.addEventListener('change', function() {
+            console.log('=== CHANGE EVENT ===', this.value);
+            handleSystemTypeChange(this.value);
+        });
+        
+        console.log('=== EVENT LISTENER ATTACHED ===');
+    } else {
+        console.error('=== ERROR: SYSTEM TYPE SELECT NOT FOUND ===');
+    }
+    
+    console.log('=== INITIALIZATION COMPLETE ===');
+});
+
+console.log('=== ASSET FORM SCRIPT LOADED ===');
+</script>
+{% endblock %}
