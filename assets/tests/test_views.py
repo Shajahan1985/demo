@@ -697,7 +697,9 @@ class TestAssetScrapView(TestCase):
         self.client.login(username='admin', password='adminpass123')
         
         # Try to scrap an active asset
-        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.active_asset.pk}))
+        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.active_asset.pk}), {
+            'scrapping_reason': 'Test reason'
+        })
         
         # Should redirect to freed_systems with error message
         self.assertEqual(response.status_code, 302)
@@ -711,7 +713,9 @@ class TestAssetScrapView(TestCase):
         """Test that freed asset is scrapped successfully (Requirement 6.1)."""
         self.client.login(username='admin', password='adminpass123')
         
-        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}))
+        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}), {
+            'scrapping_reason': 'Hardware failure'
+        })
         
         # Should redirect to scrapped_items page
         self.assertEqual(response.status_code, 302)
@@ -725,7 +729,9 @@ class TestAssetScrapView(TestCase):
         """Test that scrapped_date is recorded (Requirement 6.2)."""
         self.client.login(username='admin', password='adminpass123')
         
-        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}))
+        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}), {
+            'scrapping_reason': 'End of life'
+        })
         
         # Should redirect to scrapped_items page
         self.assertEqual(response.status_code, 302)
@@ -741,7 +747,9 @@ class TestAssetScrapView(TestCase):
         original_asset_tag = self.freed_asset.asset_tag
         original_ip = self.freed_asset.ip_address
         
-        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}))
+        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}), {
+            'scrapping_reason': 'Obsolete'
+        })
         
         # Should redirect to scrapped_items page
         self.assertEqual(response.status_code, 302)
@@ -755,7 +763,9 @@ class TestAssetScrapView(TestCase):
         """Test that success message is displayed after scrapping."""
         self.client.login(username='admin', password='adminpass123')
         
-        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}), follow=True)
+        response = self.client.post(reverse('asset_scrap', kwargs={'pk': self.freed_asset.pk}), {
+            'scrapping_reason': 'Decommissioned'
+        }, follow=True)
         
         # Check for success message
         messages = list(response.context['messages'])

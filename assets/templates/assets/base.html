@@ -17,11 +17,14 @@
             <a href="{% url 'asset_list' %}" class="navbar-brand">Asset Tracker</a>
             <ul class="navbar-nav">
                 <li><a href="{% url 'asset_list' %}" {% if request.resolver_match.url_name == 'asset_list' %}class="active"{% endif %}>Active Assets</a></li>
+                <li><a href="{% url 'power_monitoring:report' %}" {% if request.resolver_match.url_name == 'report' %}class="active"{% endif %}>Online Systems</a></li>
                 <li><a href="{% url 'freed_systems' %}" {% if request.resolver_match.url_name == 'freed_systems' %}class="active"{% endif %}>Free Systems</a></li>
                 <li><a href="{% url 'scrapped_items' %}" {% if request.resolver_match.url_name == 'scrapped_items' %}class="active"{% endif %}>Scrapped Items</a></li>
                 <li><a href="{% url 'free_ips' %}" {% if request.resolver_match.url_name == 'free_ips' %}class="active"{% endif %}>Free IPs</a></li>
                 <li><a href="{% url 'warranty' %}" {% if request.resolver_match.url_name == 'warranty' %}class="active"{% endif %}>Warranty</a></li>
                 {% if user.is_staff %}
+                <li><a href="{% url 'network_device_list' %}" {% if 'network_device' in request.resolver_match.url_name %}class="active"{% endif %}>Network Devices</a></li>
+                <li><a href="{% url 'operating_systems' %}" {% if request.resolver_match.url_name == 'operating_systems' %}class="active"{% endif %}>Operating Systems</a></li>
                 <li><a href="{% url 'asset_import' %}" {% if request.resolver_match.url_name == 'asset_import' %}class="active"{% endif %}>Import Assets</a></li>
                 {% endif %}
             </ul>

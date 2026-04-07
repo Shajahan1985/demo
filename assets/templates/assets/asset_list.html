@@ -6,6 +6,7 @@
 <div class="header-actions">
     <h1>Active Assets</h1>
     <div>
+        <a href="{% url 'power_monitoring:report' %}" class="btn btn-info">💻 Power Monitoring</a>
         <a href="{% url 'export_active_assets' %}" class="btn btn-success">Export to Excel</a>
         {% if user.is_staff %}
         <a href="{% url 'asset_create' %}" class="btn btn-primary">Add New Asset</a>
@@ -18,7 +19,7 @@
     <form method="get" action="{% url 'asset_list' %}" class="filter-form">
         <div class="filter-header">
             <h3>Filter Assets</h3>
-            {% if filter_form.operating_system.value or filter_form.asset_tag.value or filter_form.team.value or filter_form.assigned_to.value %}
+            {% if filter_form.operating_system.value or filter_form.system_type.value or filter_form.asset_tag.value or filter_form.team.value or filter_form.assigned_to.value or filter_form.ip_address.value %}
             <span class="filter-badge">
                 Filters Active
             </span>
@@ -29,6 +30,11 @@
             <div class="filter-field">
                 <label for="{{ filter_form.operating_system.id_for_label }}">{{ filter_form.operating_system.label }}</label>
                 {{ filter_form.operating_system }}
+            </div>
+            
+            <div class="filter-field">
+                <label for="{{ filter_form.system_type.id_for_label }}">{{ filter_form.system_type.label }}</label>
+                {{ filter_form.system_type }}
             </div>
             
             <div class="filter-field">
@@ -44,6 +50,11 @@
             <div class="filter-field">
                 <label for="{{ filter_form.assigned_to.id_for_label }}">{{ filter_form.assigned_to.label }}</label>
                 {{ filter_form.assigned_to }}
+            </div>
+            
+            <div class="filter-field">
+                <label for="{{ filter_form.ip_address.id_for_label }}">{{ filter_form.ip_address.label }}</label>
+                {{ filter_form.ip_address }}
             </div>
         </div>
         
@@ -78,9 +89,9 @@
                 <td>{{ asset.asset_tag }}</td>
                 <td>{{ asset.system_type }}</td>
                 <td>{{ asset.operating_system.name }}</td>
-                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
-                <td>{{ asset.assigned_to|default:"N/A" }}</td>
-                <td>
+                <td class="{% if not asset.ip_address and not asset.manual_ip %}missing-field{% endif %}">{% if asset.ip_address %}{{ asset.ip_address.address }}{% elif asset.manual_ip %}{{ asset.manual_ip }}{% else %}IP is missing{% endif %}</td>
+                <td class="{% if not asset.assigned_to %}missing-field{% endif %}">{{ asset.assigned_to|default:"User is missing" }}</td>
+                <td class="{% if not asset.team %}missing-field{% endif %}">
                     {% if asset.team %}
                         {% if asset.team.name == "Not Applicable" %}
                             Not Applicable
@@ -90,7 +101,7 @@
                             {{ asset.team.name }}
                         {% endif %}
                     {% else %}
-                        N/A
+                        Team is missing
                     {% endif %}
                 </td>
                 {% if user.is_staff %}

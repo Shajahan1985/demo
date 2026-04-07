@@ -448,7 +448,7 @@ class TestAssetService(TestCase):
         )
         
         # Scrap the asset
-        scrapped_asset = AssetService.scrap_asset(asset, self.user)
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "Obsolete hardware")
         
         # Check asset status
         self.assertEqual(scrapped_asset.status, 'scrapped')
@@ -467,9 +467,133 @@ class TestAssetService(TestCase):
         )
         
         with self.assertRaises(ValidationError) as context:
-            AssetService.scrap_asset(asset, self.user)
+            AssetService.scrap_asset(asset, self.user, "Test reason")
         
         self.assertIn('status', context.exception.message_dict)
+
+    def test_scrap_asset_with_valid_reason_succeeds(self):
+        """Test scrapping a freed asset with a valid reason succeeds."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC010',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "Hardware failure")
+
+        self.assertEqual(scrapped_asset.status, 'scrapped')
+        self.assertIsNotNone(scrapped_asset.scrapped_date)
+        self.assertEqual(scrapped_asset.scrapping_reason, "Hardware failure")
+
+    def test_scrap_asset_with_empty_reason_raises_error(self):
+        """Test scrapping with empty reason raises ValidationError."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC011',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            AssetService.scrap_asset(asset, self.user, "")
+
+        self.assertIn('scrapping_reason', context.exception.message_dict)
+        # Verify asset status unchanged
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, 'freed')
+
+    def test_scrap_asset_with_whitespace_only_reason_raises_error(self):
+        """Test scrapping with whitespace-only reason raises ValidationError."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC012',
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+
+        with self.assertRaises(ValidationError) as context:
+            AssetService.scrap_asset(asset, self.user, "   \t\n  ")
+
+        self.assertIn('scrapping_reason', context.exception.message_dict)
+        # Verify asset status unchanged
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, 'freed')
+
+    def test_scrap_asset_releases_ip_when_asset_has_ip(self):
+        """Test IP is released when scrapping an asset that has an IP."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC013',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=self.ip1,
+            status='freed',
+            freed_date=timezone.now()
+        )
+        self.ip1.is_assigned = True
+        self.ip1.assigned_to_asset = asset
+        self.ip1.save()
+
+        AssetService.scrap_asset(asset, self.user, "End of life")
+
+        self.ip1.refresh_from_db()
+        self.assertFalse(self.ip1.is_assigned)
+        self.assertIsNone(self.ip1.assigned_to_asset)
+        self.assertIsNotNone(self.ip1.freed_date)
+
+    def test_scrap_asset_preserves_ip_reference(self):
+        """Test IP reference is preserved on asset after scrapping."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC014',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=self.ip1,
+            status='freed',
+            freed_date=timezone.now()
+        )
+        self.ip1.is_assigned = True
+        self.ip1.assigned_to_asset = asset
+        self.ip1.save()
+
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "Damaged beyond repair")
+
+        scrapped_asset.refresh_from_db()
+        self.assertIsNotNone(scrapped_asset.ip_address)
+        self.assertEqual(scrapped_asset.ip_address.pk, self.ip1.pk)
+
+    def test_scrap_asset_without_ip_succeeds(self):
+        """Test scrapping an asset without an IP address succeeds."""
+        from django.utils import timezone
+
+        asset = Asset.objects.create(
+            asset_tag='BIDC015',
+            system_type='Desktop',
+            operating_system=self.os,
+            ip_address=None,
+            status='freed',
+            freed_date=timezone.now()
+        )
+
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "No longer needed")
+
+        self.assertEqual(scrapped_asset.status, 'scrapped')
+        self.assertIsNotNone(scrapped_asset.scrapped_date)
+        self.assertEqual(scrapped_asset.scrapping_reason, "No longer needed")
+        self.assertIsNone(scrapped_asset.ip_address)
+
 
 
 class TestIPManagementService(TestCase):
@@ -538,7 +662,58 @@ class TestIPManagementService(TestCase):
         self.ip1.refresh_from_db()
         self.assertFalse(self.ip1.is_assigned)
         self.assertIsNone(self.ip1.assigned_to_asset)
-    
+
+    def test_release_ip_sets_freed_date(self):
+        """Test that release_ip sets freed_date when IP is released."""
+        # Assign the IP first
+        self.ip1.is_assigned = True
+        self.ip1.assigned_to_asset = self.asset
+        self.ip1.freed_date = None
+        self.ip1.save()
+
+        # Release it
+        IPManagementService.release_ip(self.ip1)
+
+        self.ip1.refresh_from_db()
+        self.assertIsNotNone(self.ip1.freed_date)
+
+    def test_release_ip_freed_date_is_valid_datetime(self):
+        """Test that freed_date is a valid datetime after IP release."""
+        from django.utils import timezone
+        from datetime import datetime
+
+        # Assign the IP first
+        self.ip1.is_assigned = True
+        self.ip1.assigned_to_asset = self.asset
+        self.ip1.freed_date = None
+        self.ip1.save()
+
+        before_release = timezone.now()
+        IPManagementService.release_ip(self.ip1)
+        after_release = timezone.now()
+
+        self.ip1.refresh_from_db()
+        self.assertIsInstance(self.ip1.freed_date, datetime)
+        self.assertGreaterEqual(self.ip1.freed_date, before_release)
+        self.assertLessEqual(self.ip1.freed_date, after_release)
+
+    def test_release_ip_preserves_existing_functionality(self):
+        """Test that release_ip still clears is_assigned and assigned_to_asset alongside setting freed_date."""
+        # Assign the IP first
+        self.ip1.is_assigned = True
+        self.ip1.assigned_to_asset = self.asset
+        self.ip1.freed_date = None
+        self.ip1.save()
+
+        IPManagementService.release_ip(self.ip1)
+
+        self.ip1.refresh_from_db()
+        # Existing functionality
+        self.assertFalse(self.ip1.is_assigned)
+        self.assertIsNone(self.ip1.assigned_to_asset)
+        # New functionality
+        self.assertIsNotNone(self.ip1.freed_date)
+
     def test_change_asset_ip_releases_old_and_assigns_new(self):
         """Test that change_asset_ip releases old IP and assigns new IP."""
         # Assign initial IP
@@ -1207,9 +1382,8 @@ class TestImportService(TestCase):
         is_valid, missing = self.import_service.validate_headers(headers)
         
         self.assertFalse(is_valid)
-        self.assertEqual(len(missing), 2)
+        self.assertEqual(len(missing), 1)
         self.assertIn('operating_system', missing)
-        self.assertIn('ip_address', missing)
     
     def test_validate_headers_with_no_required_columns(self):
         """Test that validate_headers returns False when no required columns are present."""
@@ -1217,11 +1391,10 @@ class TestImportService(TestCase):
         is_valid, missing = self.import_service.validate_headers(headers)
         
         self.assertFalse(is_valid)
-        self.assertEqual(len(missing), 4)
+        self.assertEqual(len(missing), 3)
         self.assertIn('asset_tag', missing)
         self.assertIn('system_type', missing)
         self.assertIn('operating_system', missing)
-        self.assertIn('ip_address', missing)
     
     def test_validate_headers_with_extra_columns(self):
         """Test that validate_headers returns True when extra columns are present."""
@@ -1248,32 +1421,33 @@ class TestImportService(TestCase):
             'warranty_expiration': '2025-12-31'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertTrue(is_valid)
         self.assertEqual(len(errors), 0)
+        self.assertFalse(is_update)
     
     def test_validate_row_with_empty_asset_tag(self):
         """Test that validate_row returns error for empty asset_tag."""
+        os_obj = OperatingSystem.objects.create(name="Windows 10")
         row_data = {
             'asset_tag': '',
             'system_type': 'Desktop',
             'operating_system': 'Windows 10',
-            'ip_address': '192.168.10.100'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
         self.assertIn("Asset tag is required", errors)
+        self.assertFalse(is_update)
     
     def test_validate_row_with_duplicate_asset_tag(self):
-        """Test that validate_row returns error for duplicate asset_tag."""
+        """Test that validate_row sets is_update=True for existing asset_tag."""
         # Create existing asset
         os = OperatingSystem.objects.create(name="Windows 10")
         ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
-        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
-        user = User.objects.create_user(username='testuser', password='password')
+        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=True)
         
         Asset.objects.create(
             asset_tag='BIDC001',
@@ -1286,41 +1460,40 @@ class TestImportService(TestCase):
             'asset_tag': 'BIDC001',
             'system_type': 'Laptop',
             'operating_system': 'Windows 10',
-            'ip_address': '192.168.10.101'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
-        self.assertFalse(is_valid)
-        self.assertIn("Asset tag already exists", errors)
+        self.assertTrue(is_valid)
+        self.assertTrue(is_update)
+        self.assertEqual(len(errors), 0)
     
     def test_validate_row_with_invalid_system_type(self):
         """Test that validate_row returns error for invalid system_type."""
+        os_obj = OperatingSystem.objects.create(name="Windows 10")
         row_data = {
             'asset_tag': 'BIDC001',
             'system_type': 'Server',  # Invalid type
             'operating_system': 'Windows 10',
-            'ip_address': '192.168.10.100'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
         self.assertIn("Invalid system type. Must be Desktop, Laptop, or All-in-One PC", errors)
     
     def test_validate_row_with_nonexistent_operating_system(self):
-        """Test that validate_row returns error for non-existent operating_system."""
+        """Test that validate_row accepts non-existent OS (will be auto-created on import)."""
         row_data = {
             'asset_tag': 'BIDC001',
             'system_type': 'Desktop',
             'operating_system': 'NonExistentOS',
-            'ip_address': '192.168.10.100'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
-        self.assertFalse(is_valid)
-        self.assertIn("Operating System not found", errors)
+        self.assertTrue(is_valid)
+        self.assertEqual(len(errors), 0)
     
     def test_validate_row_with_invalid_ip_address_format(self):
         """Test that validate_row returns error for invalid IPv4 format."""
@@ -1333,10 +1506,10 @@ class TestImportService(TestCase):
             'ip_address': '999.999.999.999'  # Invalid IP
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
-        self.assertIn("Invalid IPv4 address format", errors)
+        self.assertTrue(any("Invalid IPv4 address format" in err for err in errors))
     
     def test_validate_row_with_unavailable_ip_address(self):
         """Test that validate_row returns error for already assigned IP."""
@@ -1351,26 +1524,26 @@ class TestImportService(TestCase):
             'ip_address': '192.168.10.100'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
-        self.assertIn("IP address not available", errors)
+        self.assertTrue(any("already assigned to" in err for err in errors))
     
     def test_validate_row_with_ip_not_in_system(self):
-        """Test that validate_row returns error for IP not in system."""
+        """Test that validate_row accepts IP not in system (will be treated as manual IP)."""
         os = OperatingSystem.objects.create(name="Windows 10")
         
         row_data = {
             'asset_tag': 'BIDC001',
             'system_type': 'Desktop',
             'operating_system': 'Windows 10',
-            'ip_address': '192.168.10.100'  # IP not in database
+            'ip_address': '192.168.10.100'  # IP not in database - will be manual IP
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
-        self.assertFalse(is_valid)
-        self.assertIn("IP address not found in system", errors)
+        self.assertTrue(is_valid)
+        self.assertEqual(len(errors), 0)
     
     def test_validate_row_with_nonexistent_team(self):
         """Test that validate_row returns error for non-existent team."""
@@ -1386,7 +1559,7 @@ class TestImportService(TestCase):
             'team': 'NonExistentTeam'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
         self.assertIn("Team not found", errors)
@@ -1405,30 +1578,29 @@ class TestImportService(TestCase):
             'warranty_expiration': '12/31/2025'  # Wrong format
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
         self.assertIn("Invalid date format. Use YYYY-MM-DD", errors)
     
     def test_validate_row_with_optional_fields_empty(self):
-        """Test that validate_row accepts empty optional fields."""
+        """Test that validate_row accepts empty optional fields including ip_address."""
         os = OperatingSystem.objects.create(name="Windows 10")
-        ip_range = IPRange.objects.create(range_pattern="192.168.10.x", network_prefix="192.168.10")
-        ip = IPAddress.objects.create(address="192.168.10.100", ip_range=ip_range, is_assigned=False)
         
         row_data = {
             'asset_tag': 'BIDC001',
             'system_type': 'Desktop',
             'operating_system': 'Windows 10',
-            'ip_address': '192.168.10.100',
+            'ip_address': '',
             'team': '',
             'warranty_expiration': ''
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertTrue(is_valid)
         self.assertEqual(len(errors), 0)
+        self.assertFalse(is_update)
     
     def test_validate_row_with_multiple_errors(self):
         """Test that validate_row returns all errors for a row with multiple issues."""
@@ -1436,13 +1608,13 @@ class TestImportService(TestCase):
             'asset_tag': '',
             'system_type': 'Server',
             'operating_system': 'NonExistentOS',
-            'ip_address': '999.999.999.999'
         }
         
-        is_valid, errors = self.import_service.validate_row(row_data, 2)
+        is_valid, errors, is_update = self.import_service.validate_row(row_data, 2)
         
         self.assertFalse(is_valid)
-        self.assertGreaterEqual(len(errors), 3)  # At least 3 errors
+        self.assertGreaterEqual(len(errors), 2)  # At least 2 errors (empty asset_tag + invalid system_type)
+        self.assertFalse(is_update)
 
     def test_import_assets_with_valid_excel_file(self):
         """Test that import_assets successfully imports valid assets from Excel."""
@@ -1478,7 +1650,8 @@ class TestImportService(TestCase):
         result = self.import_service.import_assets(excel_file, user)
         
         # Verify results
-        self.assertEqual(result['success_count'], 2)
+        self.assertEqual(result['created_count'], 2)
+        self.assertEqual(result['updated_count'], 0)
         self.assertEqual(result['error_count'], 0)
         self.assertEqual(len(result['errors']), 0)
         
@@ -1529,7 +1702,8 @@ class TestImportService(TestCase):
         result = self.import_service.import_assets(excel_file, user)
         
         # Verify results
-        self.assertEqual(result['success_count'], 1)
+        self.assertEqual(result['created_count'], 1)
+        self.assertEqual(result['updated_count'], 0)
         self.assertEqual(result['error_count'], 1)
         self.assertEqual(len(result['errors']), 1)
         self.assertEqual(result['errors'][0]['row'], 3)
@@ -1565,7 +1739,8 @@ class TestImportService(TestCase):
         result = self.import_service.import_assets(excel_file, user)
         
         # Verify results
-        self.assertEqual(result['success_count'], 0)
+        self.assertEqual(result['created_count'], 0)
+        self.assertEqual(result['updated_count'], 0)
         self.assertEqual(result['error_count'], 0)
         self.assertEqual(len(result['errors']), 1)
         self.assertEqual(result['errors'][0]['row'], 0)

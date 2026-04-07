@@ -1,8 +1,9 @@
 {% extends "assets/base.html" %}
 
-{% block title %}Free IPs - Asset Tracker{% endblock %}
+{% block title %}IP Addresses - Asset Tracker{% endblock %}
 
 {% block extra_css %}
+<style>
 .ip-range-section {
     margin-bottom: 2rem;
 }
@@ -13,18 +14,113 @@
     margin-left: 0.5rem;
 }
 
+.ip-item {
+    padding: 8px 12px;
+    margin: 4px;
+    border-radius: 4px;
+    display: inline-block;
+    min-width: 120px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.ip-item.free {
+    background-color: #d4edda;
+    border: 1px solid #28a745;
+    color: #155724;
+}
+
+.ip-item.occupied {
+    background-color: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+
 .ip-item:hover {
-    background-color: #e9ecef;
-    border-color: #3498db;
     transform: translateY(-2px);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+.ip-item.hidden {
+    display: none;
+}
+
+.freed-date {
+    display: block;
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 2px;
+}
+
+.legend {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.legend-item {
+    display: inline-block;
+    margin-right: 20px;
+}
+
+.legend-box {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.legend-box.free {
+    background-color: #d4edda;
+    border: 1px solid #28a745;
+}
+
+.legend-box.occupied {
+    background-color: #f8d7da;
+    border: 1px solid #dc3545;
+}
+
+.search-box {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.search-box input {
+    width: 100%;
+    max-width: 500px;
+    padding: 10px 15px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.search-results-info {
+    margin-top: 10px;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.ip-range-group.hidden {
+    display: none;
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="header-actions">
-    <h1>Free IP Addresses</h1>
-    <a href="{% url 'export_free_ips' %}" class="btn btn-success">Export to Excel</a>
+    <h1>IP Addresses</h1>
+    <a href="{% url 'export_free_ips' %}" class="btn btn-success">Export Free IPs to Excel</a>
 </div>
 
 {% if messages %}
@@ -35,20 +131,137 @@
     {% endfor %}
 {% endif %}
 
+<div class="search-box">
+    <input type="text" id="ipSearchInput" placeholder="Search by IP address or assigned person name..." autocomplete="off">
+    <div class="search-results-info" id="searchResultsInfo"></div>
+</div>
+
+<div class="legend">
+    <strong>Legend:</strong>
+    <div class="legend-item">
+        <span class="legend-box free"></span>
+        <span>Free IP</span>
+    </div>
+    <div class="legend-item">
+        <span class="legend-box occupied"></span>
+        <span>Occupied IP</span>
+    </div>
+</div>
+
 {% if ip_ranges %}
     {% for range_pattern, ips in ip_ranges.items %}
     <div class="ip-range-group">
-        <h3>{{ range_pattern }} <span class="ip-count">({{ ips|length }} available)</span></h3>
+        <h3>{{ range_pattern }} 
+            <span class="ip-count">
+                ({{ ips|length }} total)
+            </span>
+        </h3>
         <div class="ip-list">
             {% for ip in ips %}
-            <div class="ip-item">{{ ip.address }}</div>
+            <div class="ip-item {% if ip.occupant_type == 'free' %}free{% else %}occupied{% endif %}" 
+                 title="{% if ip.occupant_type == 'network_device' %}Network Device: {{ ip.occupant_name }}{% elif ip.occupant_type == 'asset' %}Asset - Assigned to: {{ ip.occupant_name }}{% else %}Free{% if ip.freed_date %} (Freed: {{ ip.freed_date|date:'Y-m-d' }}){% endif %}{% endif %}"
+                 data-occupant-type="{{ ip.occupant_type }}"
+                 data-occupant-name="{{ ip.occupant_name|default:'' }}">
+                {{ ip.address }}
+                {% if ip.occupant_type == 'network_device' %}
+                    <small class="freed-date">🎥 {{ ip.occupant_name }}</small>
+                {% elif ip.occupant_type == 'asset' %}
+                    <small class="freed-date">{{ ip.occupant_name }}</small>
+                {% elif ip.freed_date %}
+                    <small class="freed-date">Freed: {{ ip.freed_date|date:"Y-m-d" }}</small>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
     </div>
     {% endfor %}
 {% else %}
 <div class="alert alert-info">
-    <p>No free IP addresses available.</p>
+    <p>No IP addresses available.</p>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('ipSearchInput');
+    const searchResultsInfo = document.getElementById('searchResultsInfo');
+    const ipRangeGroups = document.querySelectorAll('.ip-range-group');
+    
+    // Store original counts for each range
+    const originalCounts = {};
+    ipRangeGroups.forEach(group => {
+        const rangeTitle = group.querySelector('h3');
+        if (rangeTitle) {
+            const countMatch = rangeTitle.textContent.match(/\((\d+) total\)/);
+            if (countMatch) {
+                originalCounts[group] = parseInt(countMatch[1]);
+            }
+        }
+    });
+    
+    searchInput.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase().trim();
+        
+        if (searchTerm === '') {
+            // Show all IPs and ranges
+            document.querySelectorAll('.ip-item').forEach(item => {
+                item.classList.remove('hidden');
+            });
+            ipRangeGroups.forEach(group => {
+                group.classList.remove('hidden');
+            });
+            searchResultsInfo.textContent = '';
+            return;
+        }
+        
+        let totalMatches = 0;
+        
+        ipRangeGroups.forEach(group => {
+            const ipItems = group.querySelectorAll('.ip-item');
+            let visibleInGroup = 0;
+            
+            ipItems.forEach(item => {
+                const ipAddress = item.textContent.toLowerCase();
+                const title = item.getAttribute('title') ? item.getAttribute('title').toLowerCase() : '';
+                const occupantName = item.getAttribute('data-occupant-name') ? item.getAttribute('data-occupant-name').toLowerCase() : '';
+                
+                // Check if search term matches IP address, title, or occupant name
+                if (ipAddress.includes(searchTerm) || title.includes(searchTerm) || occupantName.includes(searchTerm)) {
+                    item.classList.remove('hidden');
+                    visibleInGroup++;
+                    totalMatches++;
+                } else {
+                    item.classList.add('hidden');
+                }
+            });
+            
+            // Hide the entire range group if no IPs match
+            if (visibleInGroup === 0) {
+                group.classList.add('hidden');
+            } else {
+                group.classList.remove('hidden');
+            }
+        });
+        
+        // Update search results info
+        if (totalMatches === 0) {
+            searchResultsInfo.textContent = 'No results found';
+            searchResultsInfo.style.color = '#dc3545';
+        } else {
+            searchResultsInfo.textContent = `Found ${totalMatches} matching IP${totalMatches !== 1 ? 's' : ''}`;
+            searchResultsInfo.style.color = '#28a745';
+        }
+    });
+    
+    // Clear search on Escape key
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            this.value = '';
+            this.dispatchEvent(new Event('input'));
+        }
+    });
+});
+</script>
 {% endblock %}

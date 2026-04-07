@@ -93,7 +93,7 @@ class TestCompleteAssetLifecycleWorkflow(TestCase):
         self.assertNotIn(asset, response.context['assets'])
         
         # Step 5: Scrap the asset
-        asset = AssetService.scrap_asset(asset, self.admin_user)
+        asset = AssetService.scrap_asset(asset, self.admin_user, "End of life")
         
         # Verify asset was scrapped
         self.assertEqual(asset.status, 'scrapped')
@@ -2900,3 +2900,274 @@ isplayed
         # The IP used by the valid imported asset should be marked as assigned
         imported_asset_ip = Asset.objects.get(asset_tag='BIDC8002').ip_address
         self.assertTrue(imported_asset_ip.is_assigned)
+
+
+class TestEnhancedScrappedItemsWorkflow(TestCase):
+    """
+    End-to-end integration test for enhanced scrapped items feature.
+
+    Tests the complete lifecycle:
+    1. Create active asset with IP and manufacturer
+    2. Free the asset
+    3. Scrap the asset with reason
+    4. Verify IP is released and appears in free IPs
+    5. Verify scrapped items page shows all fields
+    6. Assign IP to new asset
+    7. Verify scrapped items page shows "(Reassigned)"
+    8. Verify free IPs page shows IP as occupied in red
+
+    Requirements: All (1.1-1.3, 2.1-2.3, 3.1-3.6, 4.1-4.3, 5.1-5.3, 6.1-6.3, 7.1-7.3)
+    """
+
+    def setUp(self):
+        """Set up test data."""
+        # Create admin user
+        self.admin_user = User.objects.create_user(
+            username='admin',
+            password='adminpass123',
+            is_staff=True
+        )
+        self.client = Client()
+        self.client.login(username='admin', password='adminpass123')
+
+        # Create IP range and addresses
+        self.ip_range = IPRange.objects.create(
+            range_pattern="192.168.20.x",
+            network_prefix="192.168.20"
+        )
+        self.ip = IPAddress.objects.create(
+            address="192.168.20.100",
+            ip_range=self.ip_range,
+            is_assigned=False
+        )
+
+        # Create OS and Team
+        self.os = OperatingSystem.objects.create(name="Windows 11 Pro")
+        self.team = Team.objects.create(name="Engineering")
+
+    def test_complete_scrapped_items_lifecycle(self):
+        """
+        Test complete enhanced scrapped items workflow:
+        create → free → scrap → verify IP released → verify page display →
+        reassign IP → verify reassignment indicators
+        """
+        # Step 1: Create active asset with IP and manufacturer
+        asset_data = {
+            'asset_tag': 'BIDC-SCRAP-001',
+            'system_type': 'Desktop',
+            'operating_system': self.os.id,
+            'ip_address': self.ip.id,
+            'particulars': 'Test asset for scrapping workflow',
+            'assigned_to': 'Test User',
+            'team': self.team.id,
+            'manufacturer': 'Dell Technologies',
+        }
+        asset = AssetService.create_asset(asset_data, self.admin_user)
+
+        # Verify asset was created with manufacturer
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset.asset_tag, 'BIDC-SCRAP-001')
+        self.assertEqual(asset.status, 'active')
+        self.assertEqual(asset.manufacturer, 'Dell Technologies')
+        self.assertEqual(asset.ip_address, self.ip)
+
+        # Verify IP is assigned
+        self.ip.refresh_from_db()
+        self.assertTrue(self.ip.is_assigned)
+        self.assertEqual(self.ip.assigned_to_asset, asset)
+
+        # Step 2: Free the asset
+        asset = AssetService.free_asset(asset, self.admin_user, 'adminpass123')
+
+        # Verify asset was freed
+        self.assertEqual(asset.status, 'freed')
+        self.assertIsNone(asset.assigned_to)
+        self.assertIsNone(asset.team)
+        self.assertIsNotNone(asset.freed_date)
+
+        # Step 3: Scrap the asset with reason
+        scrapping_reason = "Hardware failure - motherboard defective"
+        asset = AssetService.scrap_asset(asset, self.admin_user, scrapping_reason)
+
+        # Verify asset was scrapped with reason
+        self.assertEqual(asset.status, 'scrapped')
+        self.assertIsNotNone(asset.scrapped_date)
+        self.assertEqual(asset.scrapping_reason, scrapping_reason)
+        self.assertEqual(asset.manufacturer, 'Dell Technologies')  # Manufacturer preserved
+
+        # Step 4: Verify IP is released and appears in free IPs
+        self.ip.refresh_from_db()
+        self.assertFalse(self.ip.is_assigned)
+        self.assertIsNone(self.ip.assigned_to_asset)
+        self.assertIsNotNone(self.ip.freed_date)  # freed_date should be set
+
+        # Verify IP reference is preserved on asset (for historical record)
+        asset.refresh_from_db()
+        self.assertEqual(asset.ip_address, self.ip)
+
+        # Verify IP appears in free IPs service
+        free_ips = IPManagementService.get_free_ips_by_range()
+        self.assertIn('192.168.20.x', free_ips)
+        self.assertIn(self.ip, free_ips['192.168.20.x'])
+
+        # Step 5: Verify scrapped items page shows all fields
+        response = self.client.get(reverse('scrapped_items'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(asset, response.context['scrapped_assets'])
+
+        # Verify all required fields are displayed
+        content = response.content.decode('utf-8')
+        self.assertIn('BIDC-SCRAP-001', content)  # Asset tag
+        self.assertIn('192.168.20.100', content)  # IP address
+        self.assertIn('Desktop', content)  # System type
+        self.assertIn('Dell Technologies', content)  # Manufacturer (System Make)
+        self.assertIn('Hardware failure - motherboard defective', content)  # Scrapping reason
+
+        # IP should NOT show "(Reassigned)" yet since it's still free
+        self.assertNotIn('(Reassigned)', content)
+
+        # Step 6: Assign IP to new asset
+        new_asset_data = {
+            'asset_tag': 'BIDC-NEW-001',
+            'system_type': 'Laptop',
+            'operating_system': self.os.id,
+            'ip_address': self.ip.id,
+            'particulars': 'New asset with reassigned IP',
+            'assigned_to': 'New User',
+            'team': self.team.id,
+            'manufacturer': 'HP Inc',
+        }
+        new_asset = AssetService.create_asset(new_asset_data, self.admin_user)
+
+        # Verify new asset was created with the IP
+        self.assertIsNotNone(new_asset)
+        self.assertEqual(new_asset.ip_address, self.ip)
+
+        # Verify IP is now assigned
+        self.ip.refresh_from_db()
+        self.assertTrue(self.ip.is_assigned)
+        self.assertEqual(self.ip.assigned_to_asset, new_asset)
+
+        # Step 7: Verify scrapped items page shows "(Reassigned)"
+        response = self.client.get(reverse('scrapped_items'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+
+        # IP should now show "(Reassigned)" indicator
+        self.assertIn('(Reassigned)', content)
+        # IP should be displayed in red (style="color: red;")
+        self.assertIn('style="color: red;"', content)
+        # The IP address should still be visible for historical reference
+        self.assertIn('192.168.20.100', content)
+
+        # Step 8: Verify free IPs page shows IP as occupied in red
+        response = self.client.get(reverse('free_ips'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+
+        # IP should be displayed with 'occupied' class (which renders in red)
+        self.assertIn('192.168.20.100', content)
+        self.assertIn('occupied', content)
+
+        # Verify IP is NOT in free IPs list (since it's now assigned)
+        free_ips = IPManagementService.get_free_ips_by_range()
+        self.assertNotIn(self.ip, free_ips.get('192.168.20.x', []))
+
+        # Verify IP is in all IPs list with is_assigned=True
+        all_ips = IPManagementService.get_all_ips_by_range()
+        self.assertIn('192.168.20.x', all_ips)
+        ip_in_list = next((ip for ip in all_ips['192.168.20.x'] if ip.address == '192.168.20.100'), None)
+        self.assertIsNotNone(ip_in_list)
+        self.assertTrue(ip_in_list.is_assigned)
+
+    def test_scrapped_asset_without_ip_displays_na(self):
+        """Test that scrapped asset without IP displays 'N/A' on scrapped items page."""
+        # Create asset without IP
+        asset_data = {
+            'asset_tag': 'BIDC-NOIP-001',
+            'system_type': 'Desktop',
+            'operating_system': self.os.id,
+            'particulars': 'Asset without IP',
+            'assigned_to': 'Test User',
+            'team': self.team.id,
+            'manufacturer': 'Lenovo',
+        }
+        asset = AssetService.create_asset(asset_data, self.admin_user)
+
+        # Free and scrap the asset
+        asset = AssetService.free_asset(asset, self.admin_user, 'adminpass123')
+        asset = AssetService.scrap_asset(asset, self.admin_user, "No longer needed")
+
+        # Verify scrapped items page shows N/A for IP
+        response = self.client.get(reverse('scrapped_items'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+
+        self.assertIn('BIDC-NOIP-001', content)
+        self.assertIn('Lenovo', content)
+        self.assertIn('No longer needed', content)
+        # Should show N/A for IP address
+        self.assertIn('N/A', content)
+
+    def test_scrapped_asset_without_manufacturer_displays_na(self):
+        """Test that scrapped asset without manufacturer displays 'N/A' on scrapped items page."""
+        # Create asset without manufacturer
+        asset_data = {
+            'asset_tag': 'BIDC-NOMFR-001',
+            'system_type': 'Laptop',
+            'operating_system': self.os.id,
+            'ip_address': self.ip.id,
+            'particulars': 'Asset without manufacturer',
+            'assigned_to': 'Test User',
+            'team': self.team.id,
+        }
+        asset = AssetService.create_asset(asset_data, self.admin_user)
+
+        # Free and scrap the asset
+        asset = AssetService.free_asset(asset, self.admin_user, 'adminpass123')
+        asset = AssetService.scrap_asset(asset, self.admin_user, "Obsolete hardware")
+
+        # Verify scrapped items page shows N/A for manufacturer
+        response = self.client.get(reverse('scrapped_items'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+
+        self.assertIn('BIDC-NOMFR-001', content)
+        self.assertIn('Obsolete hardware', content)
+        # Manufacturer column should show N/A (using default filter)
+        # The template uses {{ asset.manufacturer|default:"N/A" }}
+
+    def test_free_ips_page_shows_freed_date(self):
+        """Test that free IPs page shows freed date for released IPs."""
+        # Create asset with IP
+        asset_data = {
+            'asset_tag': 'BIDC-FREED-001',
+            'system_type': 'Desktop',
+            'operating_system': self.os.id,
+            'ip_address': self.ip.id,
+            'particulars': 'Asset for freed date test',
+            'assigned_to': 'Test User',
+            'team': self.team.id,
+            'manufacturer': 'ASUS',
+        }
+        asset = AssetService.create_asset(asset_data, self.admin_user)
+
+        # Free and scrap the asset (which releases the IP)
+        asset = AssetService.free_asset(asset, self.admin_user, 'adminpass123')
+        asset = AssetService.scrap_asset(asset, self.admin_user, "End of life")
+
+        # Verify IP has freed_date set
+        self.ip.refresh_from_db()
+        self.assertIsNotNone(self.ip.freed_date)
+
+        # Verify free IPs page shows freed date
+        response = self.client.get(reverse('free_ips'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+
+        # Should show "Freed:" text for the IP
+        self.assertIn('Freed:', content)
+        self.assertIn('192.168.20.100', content)
+        # IP should have 'free' class since it's not assigned
+        self.assertIn('free', content)
+

@@ -1,0 +1,48 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Network Devices - Asset Tracker{% endblock %}
+
+{% block content %}
+<div class="header-actions">
+    <h1>Network Devices</h1>
+    <a href="{% url 'network_device_create' %}" class="btn btn-primary">Add New Device</a>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% if devices %}
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Device Type</th>
+            <th>Device Name</th>
+            <th>IP Address</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for device in devices %}
+        <tr>
+            <td>{{ device.device_type }}</td>
+            <td>{{ device.device_name }}</td>
+            <td>{{ device.ip_address.address }}</td>
+            <td>
+                <a href="{% url 'network_device_update' device.pk %}" class="btn btn-sm btn-warning">Edit</a>
+                <a href="{% url 'network_device_delete' device.pk %}" class="btn btn-sm btn-danger">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">
+    <p>No network devices found. <a href="{% url 'network_device_create' %}">Add your first device</a></p>
+</div>
+{% endif %}
+{% endblock %}

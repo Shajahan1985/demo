@@ -3,6 +3,114 @@
 
 {% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Asset - Asset Tracker{% endblock %}
 
+{% block extra_css %}
+<style>
+.os-input-wrapper {
+    position: relative;
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+}
+
+.os-dropdown-container,
+.os-manual-container {
+    flex: 1;
+    transition: all 0.3s ease;
+}
+
+.os-manual-container input {
+    height: 100%;
+}
+
+.btn-os-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.btn-os-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.btn-os-toggle:active {
+    transform: translateY(0);
+}
+
+.btn-os-toggle.active {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    box-shadow: 0 2px 4px rgba(245, 87, 108, 0.3);
+}
+
+.btn-os-toggle.active:hover {
+    background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+    box-shadow: 0 4px 8px rgba(245, 87, 108, 0.4);
+}
+
+#toggleOSIcon {
+    font-size: 1.1rem;
+    transition: transform 0.3s ease;
+}
+
+.btn-os-toggle.active #toggleOSIcon {
+    transform: rotate(180deg);
+}
+
+.os-help-text {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.os-help-text.manual-mode {
+    color: #f5576c;
+    font-weight: 500;
+}
+
+/* Animation for smooth transitions */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.os-dropdown-container,
+.os-manual-container {
+    animation: fadeIn 0.3s ease;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .os-input-wrapper {
+        flex-direction: column;
+    }
+    
+    .btn-os-toggle {
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <h1>{% if form.instance.pk %}Edit{% else %}Create New{% endif %} Asset</h1>
 
@@ -58,8 +166,32 @@
     </div>
     
     <div class="form-group">
+        <label for="{{ form.manufacturer.id_for_label }}">{{ form.manufacturer.label }}</label>
+        {{ form.manufacturer }}
+        {% if form.manufacturer.errors %}
+            {% for error in form.manufacturer.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
         <label for="{{ form.operating_system.id_for_label }}" class="required">{{ form.operating_system.label }}</label>
-        {{ form.operating_system }}
+        <div class="os-input-wrapper">
+            <div class="os-dropdown-container" id="osDropdownContainer">
+                {{ form.operating_system }}
+            </div>
+            <div class="os-manual-container" id="osManualContainer" style="display: none;">
+                <input type="text" id="osManualEntry" class="form-control" placeholder="e.g., Windows Server 2022, macOS Ventura, Red Hat Linux">
+            </div>
+            <button type="button" class="btn-os-toggle" onclick="toggleOSManualEntry()" id="toggleOSButton">
+                <span id="toggleOSIcon">✏️</span>
+                <span id="toggleOSText">Manual Entry</span>
+            </button>
+        </div>
+        <div class="os-help-text" id="osHelpText">
+            Select from existing operating systems or click "Manual Entry" to add a new one
+        </div>
         {% if form.operating_system.errors %}
             {% for error in form.operating_system.errors %}
                 <div class="error-message">{{ error }}</div>
@@ -69,7 +201,21 @@
     
     <div class="form-group">
         <label for="{{ form.ip_address.id_for_label }}">{{ form.ip_address.label }}</label>
-        {{ form.ip_address }}
+        <div class="os-input-wrapper">
+            <div id="ipDropdownContainer" style="flex: 1;">
+                {{ form.ip_address }}
+            </div>
+            <div id="ipManualContainer" style="display: none; flex: 1;">
+                <input type="text" id="ipManualEntry" name="ip_manual_entry" class="form-control" placeholder="e.g., 10.0.0.50, 172.16.1.100" value="{% if form.instance.pk and form.instance.manual_ip %}{{ form.instance.manual_ip }}{% endif %}">
+            </div>
+            <button type="button" class="btn-os-toggle" onclick="toggleIPManualEntry()" id="toggleIPButton">
+                <span id="toggleIPIcon">✏️</span>
+                <span id="toggleIPText">Manual Entry</span>
+            </button>
+        </div>
+        <div class="os-help-text" id="ipHelpText">
+            Select from managed IPs (192.168.10/11/50/70.x) or click "Manual Entry" for other IPs
+        </div>
         {% if form.ip_address.errors %}
             {% for error in form.ip_address.errors %}
                 <div class="error-message">{{ error }}</div>
@@ -180,6 +326,103 @@
 
 {% block extra_js %}
 <script>
+// OS Manual Entry Toggle with smooth animations
+let osManualEntryMode = false;
+let ipManualEntryMode = false;
+
+function toggleOSManualEntry() {
+    const osDropdownContainer = document.getElementById('osDropdownContainer');
+    const osManualContainer = document.getElementById('osManualContainer');
+    const osManualInput = document.getElementById('osManualEntry');
+    const toggleButton = document.getElementById('toggleOSButton');
+    const toggleIcon = document.getElementById('toggleOSIcon');
+    const toggleText = document.getElementById('toggleOSText');
+    const osHelpText = document.getElementById('osHelpText');
+    const osSelect = document.getElementById('id_operating_system');
+    
+    osManualEntryMode = !osManualEntryMode;
+    
+    if (osManualEntryMode) {
+        // Switch to manual entry mode
+        osDropdownContainer.style.display = 'none';
+        osManualContainer.style.display = 'block';
+        toggleButton.classList.add('active');
+        toggleIcon.textContent = '📋';
+        toggleText.textContent = 'Use Dropdown';
+        osHelpText.textContent = 'Enter a custom OS name - it will be automatically added to the system';
+        osHelpText.classList.add('manual-mode');
+        
+        // Clear dropdown selection and focus on input
+        osSelect.value = '';
+        setTimeout(() => osManualInput.focus(), 100);
+    } else {
+        // Switch back to dropdown mode
+        osDropdownContainer.style.display = 'block';
+        osManualContainer.style.display = 'none';
+        toggleButton.classList.remove('active');
+        toggleIcon.textContent = '✏️';
+        toggleText.textContent = 'Manual Entry';
+        osHelpText.textContent = 'Select from existing operating systems or click "Manual Entry" to add a new one';
+        osHelpText.classList.remove('manual-mode');
+        
+        // Clear manual input
+        osManualInput.value = '';
+    }
+}
+
+// IP Manual Entry Toggle
+function toggleIPManualEntry() {
+    const ipDropdownContainer = document.getElementById('ipDropdownContainer');
+    const ipManualContainer = document.getElementById('ipManualContainer');
+    const ipManualInput = document.getElementById('ipManualEntry');
+    const toggleButton = document.getElementById('toggleIPButton');
+    const toggleIcon = document.getElementById('toggleIPIcon');
+    const toggleText = document.getElementById('toggleIPText');
+    const ipHelpText = document.getElementById('ipHelpText');
+    const ipSelect = document.getElementById('id_ip_address');
+    
+    ipManualEntryMode = !ipManualEntryMode;
+    
+    if (ipManualEntryMode) {
+        ipDropdownContainer.style.display = 'none';
+        ipManualContainer.style.display = 'block';
+        toggleButton.classList.add('active');
+        toggleIcon.textContent = '📋';
+        toggleText.textContent = 'Use Dropdown';
+        ipHelpText.textContent = 'Enter any IP address - it will be stored with the asset only';
+        ipHelpText.classList.add('manual-mode');
+        ipSelect.value = '';
+        setTimeout(() => ipManualInput.focus(), 100);
+    } else {
+        ipDropdownContainer.style.display = 'block';
+        ipManualContainer.style.display = 'none';
+        toggleButton.classList.remove('active');
+        toggleIcon.textContent = '✏️';
+        toggleText.textContent = 'Manual Entry';
+        ipHelpText.textContent = 'Select from managed IPs (192.168.10/11/50/70.x) or click "Manual Entry" for other IPs';
+        ipHelpText.classList.remove('manual-mode');
+        ipManualInput.value = '';
+    }
+}
+
+// Handle form submission to process manual OS entry
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const osSelect = document.getElementById('id_operating_system');
+    const osManualInput = document.getElementById('osManualEntry');
+    
+    form.addEventListener('submit', function(e) {
+        if (osManualEntryMode && osManualInput.value.trim()) {
+            // Create a hidden input with the manual OS name
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'os_manual_entry';
+            hiddenInput.value = osManualInput.value.trim();
+            form.appendChild(hiddenInput);
+        }
+    });
+});
+
 // Team Cascading (global function for inline handler)
 function handleParentTeamChange(parentId) {
     const subTeamSelect = document.getElementById('id_sub_team');
@@ -236,6 +479,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 hiddenTeamInput.value = parentTeamSelect.value;
             }
         });
+    }
+    
+    // Check if editing an asset with manual IP - auto-switch to manual mode
+    const ipManualInput = document.getElementById('ipManualEntry');
+    if (ipManualInput && ipManualInput.value.trim()) {
+        toggleIPManualEntry();
     }
 });
 </script>

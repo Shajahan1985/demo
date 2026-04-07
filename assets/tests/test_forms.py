@@ -3,8 +3,12 @@ Unit tests for asset forms.
 """
 import pytest
 from django.test import TestCase
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from assets.forms import AssetForm
 from assets.models import Asset, OperatingSystem, Team, IPAddress, IPRange
+from assets.services.asset_service import AssetService
 
 
 @pytest.mark.django_db
@@ -55,6 +59,7 @@ class TestAssetForm(TestCase):
         form_data = {
             'asset_tag': 'BIDC002',
             'system_type': 'Laptop',
+            'hardware_serial_number': 'SN123456789',
             'operating_system': self.os.id,
             'ip_address': self.ip_address.id,
             'particulars': 'Test particulars',
@@ -128,6 +133,7 @@ class TestAssetForm(TestCase):
         form_data = {
             'asset_tag': 'BIDC006',
             'system_type': 'Laptop',
+            'hardware_serial_number': 'SN987654321',
             'operating_system': self.os.id,
         }
         form = AssetForm(data=form_data, instance=asset)
@@ -143,13 +149,17 @@ class TestAssetForm(TestCase):
         self.assertEqual(os_queryset.count(), 2)
     
     def test_form_populates_team_dropdown(self):
-        """Test form populates team dropdown."""
-        # Create additional team
+        """Test form populates parent team dropdown."""
+        # Get initial count of parent teams
+        initial_count = Team.objects.get_parent_teams().count()
+        
+        # Create additional parent team
         Team.objects.create(name="HR Department")
         
         form = AssetForm()
-        team_queryset = form.fields['team'].queryset
-        self.assertEqual(team_queryset.count(), 2)
+        # Check parent_team field instead of team field (team is now hidden)
+        parent_team_queryset = form.fields['parent_team'].queryset
+        self.assertEqual(parent_team_queryset.count(), initial_count + 1)
     
     def test_form_populates_ip_address_dropdown_with_free_ips(self):
         """Test form populates IP address dropdown with only free IPs."""
@@ -611,3 +621,118 @@ class TestHierarchicalTeamChoiceField(TestCase):
         self.assertIn(self.parent1.id, team_positions)
         self.assertIn(self.sub1.id, team_positions)
         self.assertIn(self.sub2.id, team_positions)
+
+
+@pytest.mark.django_db
+class TestAssetFormManufacturerField(TestCase):
+    """Test cases for manufacturer field in AssetForm.
+
+    Validates: Requirements 1.2, 2.2
+    """
+
+    def setUp(self):
+        """Set up test data."""
+        self.os = OperatingSystem.objects.create(name="Windows 11 Form Test")
+
+    def test_manufacturer_field_accepts_valid_value(self):
+        """Test manufacturer field accepts a valid string value."""
+        form_data = {
+            'asset_tag': 'BIDC_MFR001',
+            'system_type': 'Desktop',
+            'operating_system': self.os.id,
+            'manufacturer': 'Dell',
+        }
+        form = AssetForm(data=form_data)
+        self.assertTrue(form.is_valid(), f"Form errors: {form.errors}")
+        self.assertEqual(form.cleaned_data['manufacturer'], 'Dell')
+
+    def test_manufacturer_field_accepts_empty_value(self):
+        """Test manufacturer field is optional and accepts empty value."""
+        form_data = {
+            'asset_tag': 'BIDC_MFR002',
+            'system_type': 'Desktop',
+            'operating_system': self.os.id,
+            'manufacturer': '',
+        }
+        form = AssetForm(data=form_data)
+        self.assertTrue(form.is_valid(), f"Form errors: {form.errors}")
+
+    def test_manufacturer_field_accepts_various_manufacturers(self):
+        """Test manufacturer field accepts various manufacturer names."""
+        manufacturers = ['HP', 'Lenovo', 'Apple', 'ASUS', 'Acer']
+        for i, mfr in enumerate(manufacturers):
+            form_data = {
+                'asset_tag': f'BIDC_MFR{i + 10}',
+                'system_type': 'Desktop',
+                'operating_system': self.os.id,
+                'manufacturer': mfr,
+            }
+            form = AssetForm(data=form_data)
+            self.assertTrue(form.is_valid(), f"Form should accept manufacturer '{mfr}'. Errors: {form.errors}")
+
+    def test_manufacturer_field_present_in_form(self):
+        """Test manufacturer field is included in the form."""
+        form = AssetForm()
+        self.assertIn('manufacturer', form.fields)
+
+
+@pytest.mark.django_db
+class TestScrappingReasonValidation(TestCase):
+    """Test cases for scrapping_reason validation.
+
+    Since scrapping_reason is not part of a Django Form class but is validated
+    at the service layer when scrapping an asset, these tests validate the
+    form-level behavior through the service validation.
+
+    Validates: Requirements 2.2
+    """
+
+    def setUp(self):
+        """Set up test data."""
+        self.os = OperatingSystem.objects.create(name="Windows 11 Scrap Test")
+        self.user = User.objects.create_user(
+            username='scrap_form_tester',
+            password='testpass123',
+            is_staff=True
+        )
+
+    def _create_freed_asset(self, tag):
+        """Helper to create a freed asset ready for scrapping."""
+        return Asset.objects.create(
+            asset_tag=tag,
+            system_type='Desktop',
+            operating_system=self.os,
+            status='freed',
+            freed_date=timezone.now()
+        )
+
+    def test_scrapping_reason_rejects_empty_value(self):
+        """Test that scrapping an asset with empty reason is rejected."""
+        asset = self._create_freed_asset('BIDC_SCRF001')
+
+        with self.assertRaises(ValidationError) as context:
+            AssetService.scrap_asset(asset, self.user, '')
+
+        self.assertIn('scrapping_reason', context.exception.message_dict)
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, 'freed')
+
+    def test_scrapping_reason_rejects_whitespace_only_value(self):
+        """Test that scrapping an asset with whitespace-only reason is rejected."""
+        asset = self._create_freed_asset('BIDC_SCRF002')
+
+        with self.assertRaises(ValidationError) as context:
+            AssetService.scrap_asset(asset, self.user, '   \t\n  ')
+
+        self.assertIn('scrapping_reason', context.exception.message_dict)
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, 'freed')
+
+    def test_scrapping_reason_accepts_valid_value(self):
+        """Test that scrapping an asset with a valid reason succeeds."""
+        asset = self._create_freed_asset('BIDC_SCRF003')
+
+        scrapped = AssetService.scrap_asset(asset, self.user, 'Hardware failure - motherboard damaged')
+
+        self.assertEqual(scrapped.status, 'scrapped')
+        self.assertEqual(scrapped.scrapping_reason, 'Hardware failure - motherboard damaged')

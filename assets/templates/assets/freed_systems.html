@@ -2,10 +2,49 @@
 
 {% block title %}Free Systems - Asset Tracker{% endblock %}
 
+{% block extra_css %}
+<style>
+.badge {
+    padding: 0.35em 0.65em;
+    font-size: 0.85em;
+    font-weight: 600;
+    border-radius: 0.25rem;
+    display: inline-block;
+}
+
+.badge-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.badge-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.badge-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.issues-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="header-actions">
     <h1>Free Systems</h1>
-    <a href="{% url 'export_freed_assets' %}" class="btn btn-success">Export to Excel</a>
+    <div>
+        {% if user.is_staff %}
+        <a href="{% url 'freed_system_create' %}" class="btn btn-primary">Add Freed System</a>
+        {% endif %}
+        <a href="{% url 'export_freed_assets' %}" class="btn btn-success">Export to Excel</a>
+    </div>
 </div>
 
 {% if messages %}
@@ -25,6 +64,8 @@
                 <th>IP Address</th>
                 <th>System Type</th>
                 <th>Operating System</th>
+                <th>Health Status</th>
+                <th>Issues</th>
                 <th>Freed Date</th>
                 {% if user.is_staff %}
                 <th>Actions</th>
@@ -35,12 +76,40 @@
             {% for asset in freed_assets %}
             <tr>
                 <td>{{ asset.asset_tag }}</td>
-                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>
+                    {% if asset.ip_address %}
+                        {{ asset.ip_address.address }}
+                    {% elif asset.manual_ip %}
+                        {{ asset.manual_ip }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
                 <td>{{ asset.system_type }}</td>
                 <td>{{ asset.operating_system.name }}</td>
+                <td>
+                    {% if asset.health_status == 'healthy' %}
+                        <span class="badge badge-success">✓ Healthy</span>
+                    {% elif asset.health_status == 'defective' %}
+                        <span class="badge badge-danger">⚠ Defective</span>
+                    {% else %}
+                        <span class="badge badge-secondary">N/A</span>
+                    {% endif %}
+                </td>
+                <td class="issues-cell">
+                    {% if asset.health_status == 'defective' and asset.issues_description %}
+                        {{ asset.issues_description|truncatewords:10 }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
                 <td>{{ asset.freed_date|date:"Y-m-d H:i" }}</td>
                 {% if user.is_staff %}
                 <td>
+                    <a href="{% url 'freed_system_edit' asset.pk %}" class="btn btn-sm btn-primary">Edit</a>
+                    {% if asset.health_status == 'healthy' %}
+                    <a href="{% url 'asset_reassign' asset.pk %}" class="btn btn-sm btn-success">Reassign</a>
+                    {% endif %}
                     <a href="{% url 'asset_scrap' asset.pk %}" class="btn btn-sm btn-danger">Scrap</a>
                 </td>
                 {% endif %}

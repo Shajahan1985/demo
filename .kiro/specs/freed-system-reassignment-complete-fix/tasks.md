@@ -1,0 +1,101 @@
+# Implementation Plan
+
+- [ ] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Hidden Team Field Not Populated on Parent Team Selection
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the bug exists
+  - **Scoped PBT Approach**: For deterministic bugs, scope the property to the concrete failing case(s) to ensure reproducibility
+  - Test that when a parent team is selected from the dropdown, the hidden team field (id_team) is immediately populated with the parent team ID
+  - Test that when a sub-team is selected after a parent team, the hidden team field is updated to the sub-team ID
+  - Test that form submission is allowed when the hidden team field is populated
+  - Use browser automation (Selenium/Playwright) to simulate user interaction
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found:
+    - Hidden team field remains empty after parent team selection
+    - Console may show "handleParentTeamChange is not defined" error
+    - Form submission is blocked by JavaScript validation
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3_
+
+- [ ] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Non-Team Form Functionality Unchanged
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-team form interactions
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements
+  - Test IP address selection (dropdown vs manual entry) works correctly
+  - Test operating system selection (dropdown vs manual entry) works correctly
+  - Test other form fields (assigned_to, system_type, manufacturer, etc.) are processed correctly
+  - Test server-side validation errors are displayed correctly
+  - Test successful reassignment redirects to active assets page
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 3. Fix handleParentTeamChange function scope and event handling
+
+  - [x] 3.1 Remove inline onchange handler from parent_team field
+    - Update `assets/forms/asset_forms.py` line 258
+    - Remove `'onchange': 'handleParentTeamChange(this.value)'` from widget attrs
+    - Keep only `'class': 'form-control'` and `'id': 'id_parent_team'` in attrs
+    - _Bug_Condition: isBugCondition(input) where input.form.getElementById('id_team').value IS EMPTY AND input.form.getElementById('id_parent_team').value IS NOT EMPTY AND handleParentTeamChange WAS NOT CALLED_
+    - _Expected_Behavior: Hidden team field SHALL be immediately populated when parent team is selected_
+    - _Preservation: IP address, OS, and other form field handling must remain unchanged_
+    - _Requirements: 1.1, 1.2, 2.1, 2.2, 3.1, 3.2, 3.3_
+
+  - [x] 3.2 Move handleParentTeamChange to global scope
+    - Update `assets/templates/assets/asset_reassign_form.html`
+    - Move `handleParentTeamChange` function definition outside of DOMContentLoaded event listener
+    - Define function at script level (before or after DOMContentLoaded block)
+    - Add defensive null checks for hiddenTeamInput and subTeamSelect
+    - Add console logging for debugging (log when hidden field is updated)
+    - Add try-catch blocks around critical operations
+    - _Bug_Condition: handleParentTeamChange is not accessible to inline handler due to scope_
+    - _Expected_Behavior: Function is accessible globally and can be called from event listeners_
+    - _Preservation: Existing JavaScript functionality must remain unchanged_
+    - _Requirements: 1.1, 2.1, 2.2, 2.4_
+
+  - [x] 3.3 Add event listener for parent_team changes
+    - In DOMContentLoaded block, add event listener to parent_team select element
+    - Use `parentTeamSelect.addEventListener('change', function() { handleParentTeamChange(this.value); })`
+    - Ensure initial population: if parentTeamSelect.value exists on page load, call handleParentTeamChange
+    - This approach is consistent with how sub_team is handled (line 449)
+    - _Bug_Condition: No event listener attached to parent_team select, inline handler fails_
+    - _Expected_Behavior: Event listener properly triggers handleParentTeamChange on selection_
+    - _Preservation: Sub-team event listener and other event handlers must remain unchanged_
+    - _Requirements: 1.1, 1.2, 2.1, 2.2_
+
+  - [x] 3.4 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Hidden Team Field Properly Populated
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - Verify hidden team field is populated when parent team is selected
+    - Verify hidden team field is updated when sub-team is selected
+    - Verify form submission succeeds when all required fields are filled
+    - _Requirements: 2.1, 2.2, 2.3_
+
+  - [x] 3.5 Verify preservation tests still pass
+    - **Property 2: Preservation** - Non-Team Form Functionality Unchanged
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm IP address selection still works correctly
+    - Confirm OS selection still works correctly
+    - Confirm other form fields are processed correctly
+    - Confirm server-side validation still works correctly
+    - Confirm successful reassignment still redirects correctly
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Run all tests (bug condition + preservation)
+  - Verify no regressions in existing functionality
+  - Test across different browsers (Chrome, Firefox, Safari) if possible
+  - Verify console shows no JavaScript errors
+  - Ask the user if questions arise

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Reassignment Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .success { color: green; }
+        .error { color: red; }
+        input[type="text"] { padding: 8px; width: 300px; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Reassignment Form Test Page</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Manual IP Input Field</h2>
+        <p>Try typing in this field:</p>
+        <input type="text" id="test_ip" placeholder="Enter IP like 192.168.1.100">
+        <p id="test_result"></p>
+        <button onclick="testInput()">Test Input</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Form Field Status</h2>
+        <input type="text" id="id_manual_ip" name="manual_ip" placeholder="Manual IP field">
+        <p>Field properties:</p>
+        <ul id="field_props"></ul>
+        <button onclick="checkField()">Check Field</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Toggle Functionality</h2>
+        <div id="dropdown_container" style="display: block;">
+            <select><option>Dropdown Mode</option></select>
+        </div>
+        <div id="manual_container" style="display: none;">
+            <input type="text" id="manual_input" placeholder="Manual mode">
+        </div>
+        <button onclick="toggleMode()">Toggle Mode</button>
+        <p id="mode_status">Current mode: Dropdown</p>
+    </div>
+    
+    <script>
+        let manualMode = false;
+        
+        function testInput() {
+            const input = document.getElementById('test_ip');
+            const result = document.getElementById('test_result');
+            if (input.value) {
+                result.innerHTML = '<span class="success">✓ Input is working! Value: ' + input.value + '</span>';
+            } else {
+                result.innerHTML = '<span class="error">✗ No value entered</span>';
+            }
+        }
+        
+        function checkField() {
+            const field = document.getElementById('id_manual_ip');
+            const props = document.getElementById('field_props');
+            
+            props.innerHTML = `
+                <li>Disabled: ${field.disabled}</li>
+                <li>ReadOnly: ${field.readOnly}</li>
+                <li>Background: ${window.getComputedStyle(field).backgroundColor}</li>
+                <li>Cursor: ${window.getComputedStyle(field).cursor}</li>
+                <li>Pointer Events: ${window.getComputedStyle(field).pointerEvents}</li>
+                <li>Value: "${field.value}"</li>
+            `;
+        }
+        
+        function toggleMode() {
+            const dropdown = document.getElementById('dropdown_container');
+            const manual = document.getElementById('manual_container');
+            const status = document.getElementById('mode_status');
+            const input = document.getElementById('manual_input');
+            
+            manualMode = !manualMode;
+            
+            if (manualMode) {
+                dropdown.style.display = 'none';
+                manual.style.display = 'block';
+                status.textContent = 'Current mode: Manual';
+                input.removeAttribute('disabled');
+                input.focus();
+            } else {
+                dropdown.style.display = 'block';
+                manual.style.display = 'none';
+                status.textContent = 'Current mode: Dropdown';
+            }
+        }
+        
+        // Auto-check field on load
+        window.onload = function() {
+            checkField();
+        };
+    </script>
+</body>
+</html>

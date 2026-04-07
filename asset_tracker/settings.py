@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'authentication',
     'assets',
+    'power_monitoring',
 ]
 
 MIDDLEWARE = [
@@ -251,4 +252,20 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'assets.tasks.run_daily_warranty_check',
         'schedule': crontab(hour=9, minute=0),  # Run daily at 9:00 AM
     },
+    'check-power-status-periodic': {
+        'task': 'power_monitoring.tasks.check_power_status_task',
+        'schedule': 900.0,  # Run every 15 minutes (900 seconds)
+    },
+    'send-daily-notification': {
+        'task': 'power_monitoring.tasks.send_daily_notification_task',
+        'schedule': crontab(hour=17, minute=30),  # Run daily at 5:30 PM
+    },
+    'send-after-hours-notification': {
+        'task': 'power_monitoring.tasks.send_after_hours_notification_task',
+        'schedule': crontab(hour=20, minute=45),  # Run daily at 8:45 PM
+    },
 }
+
+# Power Monitoring Settings
+DEFAULT_NOTIFICATION_RECIPIENT = 'shajahan.t@benzyinfotech.com'
+POWER_MONITORING_ENABLED = True

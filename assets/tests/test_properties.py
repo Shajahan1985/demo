@@ -674,7 +674,7 @@ class TestAssetServiceProperties(TestCase):
         assert asset in freed_view
 
         # Now scrap the asset
-        scrapped_asset = AssetService.scrap_asset(asset, self.user)
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "End of life")
 
         # Verify status changed to scrapped
         assert scrapped_asset.status == 'scrapped'
@@ -1684,7 +1684,7 @@ class TestAttachmentProperties(TestCase):
         asset.save()
         
         # Now scrap the asset
-        scrapped_asset = AssetService.scrap_asset(asset, self.user)
+        scrapped_asset = AssetService.scrap_asset(asset, self.user, "Hardware failure")
         
         # Verify asset is scrapped
         assert scrapped_asset.status == 'scrapped'
@@ -1922,3 +1922,806 @@ class TestScrappedItemsViewProperties(TestCase):
             if asset.ip_address:
                 asset.ip_address.delete()
             asset.delete()
+
+
+@pytest.mark.django_db
+class TestEnhancedScrappedItemsProperties(TestCase):
+    """Property-based tests for enhanced scrapped items feature."""
+
+    def setUp(self):
+        """Set up test data."""
+        super().setUp()
+        self.user, _ = User.objects.get_or_create(
+            username='admin_enhanced_scrap_test',
+            defaults={'password': 'password'}
+        )
+        self.os, _ = OperatingSystem.objects.get_or_create(name="Windows 10 Enhanced Scrap Test")
+        self.team, _ = Team.objects.get_or_create(name="IT Dept Enhanced Scrap Test")
+        self.ip_range, _ = IPRange.objects.get_or_create(
+            range_pattern="192.168.88.x",
+            defaults={'network_prefix': "192.168.88"}
+        )
+        IPAddress.objects.filter(ip_range=self.ip_range).delete()
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        manufacturer=st.text(min_size=1, max_size=100).filter(lambda x: x.strip()),
+    )
+    @settings(max_examples=100)
+    def test_property_1_manufacturer_field_persistence(self, asset_tag, system_type, manufacturer):
+        """
+        Feature: enhanced-scrapped-items, Property 1: Manufacturer field persistence
+
+        For any asset with a manufacturer value, creating or updating the asset
+        should result in the manufacturer value being stored and retrievable
+        from the database.
+
+        **Validates: Requirements 1.1, 1.2**
+        """
+        asset_tag = asset_tag.strip()
+        manufacturer = manufacturer.strip()
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+
+        # Create an IP for the asset
+        ip = IPAddress.objects.create(
+            address=f"192.168.88.{Asset.objects.count() % 254 + 1}",
+            ip_range=self.ip_range,
+            is_assigned=False,
+        )
+
+        # --- Test creation with manufacturer ---
+        data = {
+            'asset_tag': asset_tag,
+            'system_type': system_type,
+            'operating_system': self.os.id,
+            'ip_address': ip.id,
+            'team': self.team.id,
+            'manufacturer': manufacturer,
+        }
+        asset = AssetService.create_asset(data, self.user)
+
+        # Reload from DB and verify manufacturer persisted
+        asset.refresh_from_db()
+        assert asset.manufacturer == manufacturer, (
+            f"After creation, manufacturer should be '{manufacturer}' but got '{asset.manufacturer}'"
+        )
+
+        # --- Test update with a new manufacturer value ---
+        new_manufacturer = manufacturer[::-1] if len(manufacturer) > 1 else manufacturer + "X"
+        update_data = {'manufacturer': new_manufacturer}
+        updated_asset = AssetService.update_asset(asset, update_data, self.user)
+
+        updated_asset.refresh_from_db()
+        assert updated_asset.manufacturer == new_manufacturer, (
+            f"After update, manufacturer should be '{new_manufacturer}' but got '{updated_asset.manufacturer}'"
+        )
+
+        # Clean up
+        updated_asset.delete()
+        ip.is_assigned = False
+        ip.assigned_to_asset = None
+        ip.save()
+        ip.delete()
+
+    @given(
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100)
+    def test_property_7_freed_date_is_set_on_ip_release(self, system_type, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 7: Freed date is set on IP release
+
+        For any IP address that is released, the freed_date field should be set
+        to the current timestamp and should not be None.
+
+        **Validates: Requirements 5.3**
+        """
+        from assets.services.ip_management_service import IPManagementService
+        from django.utils import timezone
+        from datetime import timedelta
+
+        address = f"192.168.88.{ip_last_octet}"
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+            freed_date=None,
+        )
+
+        before_release = timezone.now()
+        IPManagementService.release_ip(ip)
+        after_release = timezone.now()
+
+        ip.refresh_from_db()
+
+        # freed_date must be set (not None)
+        assert ip.freed_date is not None, (
+            "After release_ip(), freed_date should not be None"
+        )
+
+        # freed_date should be a valid datetime close to the current time
+        assert before_release - timedelta(seconds=1) <= ip.freed_date <= after_release + timedelta(seconds=1), (
+            f"freed_date {ip.freed_date} should be between {before_release} and {after_release}"
+        )
+
+        # IP should also be marked as not assigned
+        assert ip.is_assigned is False, (
+            "After release_ip(), is_assigned should be False"
+        )
+
+        # Clean up
+        ip.delete()
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        scrapping_reason=st.one_of(
+            st.just(''),
+            st.just(None),
+            st.text(alphabet=' \t\n\r', min_size=1, max_size=50),
+        ),
+    )
+    @settings(max_examples=100)
+    def test_property_2_scrapping_reason_validation(self, asset_tag, system_type, scrapping_reason):
+        """
+        # Feature: enhanced-scrapped-items, Property 2: Scrapping reason validation
+
+        For any freed asset, attempting to scrap it with an empty or whitespace-only
+        scrapping reason should be rejected, and the asset status should remain 'freed'.
+
+        **Validates: Requirements 2.1, 2.2**
+        """
+        from django.utils import timezone
+
+        asset_tag = asset_tag.strip()
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+
+        # Create an IP for the asset
+        ip = IPAddress.objects.create(
+            address=f"192.168.88.{Asset.objects.count() % 254 + 1}",
+            ip_range=self.ip_range,
+            is_assigned=False,
+        )
+
+        # Create asset directly in 'freed' status (bypasses password-protected free_asset)
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            status='freed',
+            freed_date=timezone.now(),
+        )
+
+        assert asset.status == 'freed', (
+            f"Asset should be in 'freed' status before scrapping, got '{asset.status}'"
+        )
+
+        # Attempting to scrap with empty/whitespace reason should raise ValidationError
+        with pytest.raises(ValidationError):
+            AssetService.scrap_asset(asset, self.user, scrapping_reason)
+
+        # Asset status should remain 'freed' after failed scrap attempt
+        asset.refresh_from_db()
+        assert asset.status == 'freed', (
+            f"Asset status should remain 'freed' after rejected scrap, got '{asset.status}'"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.is_assigned = False
+        ip.assigned_to_asset = None
+        ip.save()
+        ip.delete()
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        scrapping_reason=st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100)
+    def test_property_4_ip_release_on_scrapping(self, asset_tag, system_type, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 4: IP release on scrapping
+
+        For any freed asset with an assigned IP address, scrapping the asset
+        should result in the IP address being released (is_assigned=False,
+        assigned_to_asset=None).
+
+        **Validates: Requirements 4.1**
+        """
+        from django.utils import timezone
+
+        asset_tag = asset_tag.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP and mark it as assigned
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+        )
+
+        # Create asset directly in 'freed' status with the assigned IP
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            status='freed',
+            freed_date=timezone.now(),
+        )
+
+        # Update IP to point to this asset
+        ip.assigned_to_asset = asset
+        ip.save()
+
+        # Scrap the asset with a valid reason
+        AssetService.scrap_asset(asset, self.user, scrapping_reason)
+
+        # Reload IP from DB and verify it was released
+        ip.refresh_from_db()
+
+        assert ip.is_assigned is False, (
+            f"After scrapping, IP is_assigned should be False but got {ip.is_assigned}"
+        )
+        assert ip.assigned_to_asset is None, (
+            f"After scrapping, IP assigned_to_asset should be None but got {ip.assigned_to_asset}"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.delete()
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        scrapping_reason=st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100)
+    def test_property_6_ip_reference_preservation_on_scrapping(self, asset_tag, system_type, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 6: IP reference preservation on scrapping
+
+        For any scrapped asset that had an IP address, the asset.ip_address
+        reference should still point to the same IPAddress object after scrapping
+        (not set to None).
+
+        **Validates: Requirements 4.3, 7.3**
+        """
+        from django.utils import timezone
+
+        asset_tag = asset_tag.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP and mark it as assigned
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+        )
+
+        # Create asset directly in 'freed' status with the assigned IP
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            status='freed',
+            freed_date=timezone.now(),
+        )
+
+        # Update IP to point to this asset
+        ip.assigned_to_asset = asset
+        ip.save()
+
+        original_ip_id = ip.id
+
+        # Scrap the asset with a valid reason
+        AssetService.scrap_asset(asset, self.user, scrapping_reason)
+
+        # Reload asset from DB
+        asset.refresh_from_db()
+
+        # The asset should still reference the same IP address (not None)
+        assert asset.ip_address is not None, (
+            "After scrapping, asset.ip_address should not be None — "
+            "the IP reference must be preserved for historical record"
+        )
+        assert asset.ip_address_id == original_ip_id, (
+            f"After scrapping, asset.ip_address should still point to the original IP "
+            f"(id={original_ip_id}) but got ip_address_id={asset.ip_address_id}"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.delete()
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        scrapping_reason=st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100)
+    def test_property_6_ip_reference_preservation_on_scrapping(self, asset_tag, system_type, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 6: IP reference preservation on scrapping
+
+        For any scrapped asset that had an IP address, the asset.ip_address
+        reference should still point to the same IPAddress object after scrapping
+        (not set to None).
+
+        **Validates: Requirements 4.3, 7.3**
+        """
+        from django.utils import timezone
+
+        asset_tag = asset_tag.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP and mark it as assigned
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+        )
+
+        # Create asset directly in 'freed' status with the assigned IP
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            status='freed',
+            freed_date=timezone.now(),
+        )
+
+        # Update IP to point to this asset
+        ip.assigned_to_asset = asset
+        ip.save()
+
+        original_ip_id = ip.id
+
+        # Scrap the asset with a valid reason
+        AssetService.scrap_asset(asset, self.user, scrapping_reason)
+
+        # Reload asset from DB
+        asset.refresh_from_db()
+
+        # The asset should still reference the same IP address (not None)
+        assert asset.ip_address is not None, (
+            "After scrapping, asset.ip_address should not be None — "
+            "the IP reference must be preserved for historical record"
+        )
+        assert asset.ip_address_id == original_ip_id, (
+            f"After scrapping, asset.ip_address should still point to the original IP "
+            f"(id={original_ip_id}) but got ip_address_id={asset.ip_address_id}"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.delete()
+
+
+    @given(
+        asset_tag=st.text(min_size=1, max_size=50).filter(lambda x: x.strip()),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        scrapping_reason=st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100)
+    def test_property_5_released_ip_appears_in_free_ips(self, asset_tag, system_type, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 5: Released IP appears in free IPs
+
+        For any asset with an IP address, after scrapping the asset, the IP address
+        should appear in the free IPs queryset returned by
+        IPManagementService.get_free_ips_by_range().
+
+        **Validates: Requirements 4.2, 5.1**
+        """
+        from assets.services.ip_management_service import IPManagementService
+        from django.utils import timezone
+
+        asset_tag = asset_tag.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP and mark it as assigned
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+        )
+
+        # Create asset directly in 'freed' status with the assigned IP
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            status='freed',
+            freed_date=timezone.now(),
+        )
+
+        # Update IP to point to this asset
+        ip.assigned_to_asset = asset
+        ip.save()
+
+        # Scrap the asset with a valid reason
+        AssetService.scrap_asset(asset, self.user, scrapping_reason)
+
+        # Get free IPs by range and verify the released IP appears
+        free_ips_by_range = IPManagementService.get_free_ips_by_range()
+
+        # Collect all free IP addresses across all ranges
+        all_free_ip_addresses = []
+        for range_pattern, ips in free_ips_by_range.items():
+            all_free_ip_addresses.extend(ip_obj.address for ip_obj in ips)
+
+        assert address in all_free_ip_addresses, (
+            f"After scrapping, IP {address} should appear in free IPs "
+            f"but it was not found. Free IPs: {all_free_ip_addresses}"
+        )
+
+        # Also verify it appears under the correct range
+        range_key = self.ip_range.range_pattern
+        assert range_key in free_ips_by_range, (
+            f"IP range '{range_key}' should be present in free IPs result"
+        )
+        range_ips = [ip_obj.address for ip_obj in free_ips_by_range[range_key]]
+        assert address in range_ips, (
+            f"After scrapping, IP {address} should appear under range '{range_key}' "
+            f"but found: {range_ips}"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.delete()
+
+    @given(
+        asset_tag=st.from_regex(r'[A-Za-z0-9]{1,50}', fullmatch=True),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        manufacturer=st.from_regex(r'[A-Za-z0-9 ]{1,100}', fullmatch=True).filter(lambda x: x.strip()),
+        scrapping_reason=st.from_regex(r'[A-Za-z0-9 ]{1,200}', fullmatch=True).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_3_scrapped_items_page_displays_all_required_fields(self, asset_tag, system_type, manufacturer, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 3: Scrapped items page displays all required fields
+
+        For any scrapped asset, the rendered scrapped items page HTML should contain
+        the asset's IP address, asset tag (BIDC number), system type, manufacturer
+        (system make), scrapped date, and scrapping reason.
+
+        **Validates: Requirements 1.3, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6**
+        """
+        from django.urls import reverse
+        from django.utils import timezone
+
+        manufacturer = manufacturer.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP address
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=False,
+        )
+
+        # Create a scrapped asset with all fields populated
+        scrapped_date = timezone.now()
+        asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            manufacturer=manufacturer,
+            scrapping_reason=scrapping_reason,
+            status='scrapped',
+            scrapped_date=scrapped_date,
+        )
+
+        # Log in and request the scrapped items page
+        self.user.set_password('testpass123')
+        self.user.save()
+        self.client.login(username=self.user.username, password='testpass123')
+
+        response = self.client.get(reverse('scrapped_items'))
+        assert response.status_code == 200, (
+            f"Expected status 200 but got {response.status_code}"
+        )
+
+        content = response.content.decode()
+
+        # Requirement 3.1: IP address is displayed
+        assert address in content, (
+            f"IP address '{address}' should appear on scrapped items page"
+        )
+
+        # Requirement 3.2: Asset tag (BIDC number) is displayed
+        assert asset_tag in content, (
+            f"Asset tag '{asset_tag}' should appear on scrapped items page"
+        )
+
+        # Requirement 3.3: System type is displayed
+        assert system_type in content, (
+            f"System type '{system_type}' should appear on scrapped items page"
+        )
+
+        # Requirement 3.4 / 1.3: System make (manufacturer) is displayed
+        assert manufacturer in content, (
+            f"Manufacturer '{manufacturer}' should appear on scrapped items page"
+        )
+
+        # Requirement 3.5: Scrapped date is displayed
+        formatted_date = scrapped_date.strftime("%Y-%m-%d")
+        assert formatted_date in content, (
+            f"Scrapped date '{formatted_date}' should appear on scrapped items page"
+        )
+
+        # Requirement 3.6 / 2.3: Scrapping reason is displayed
+        assert scrapping_reason in content, (
+            f"Scrapping reason '{scrapping_reason}' should appear on scrapped items page"
+        )
+
+        # Clean up
+        asset.delete()
+        ip.delete()
+
+    @given(
+        asset_tag=st.from_regex(r'[A-Za-z0-9]{1,50}', fullmatch=True),
+        system_type=st.sampled_from(['Desktop', 'Laptop', 'All-in-One PC']),
+        manufacturer=st.from_regex(r'[A-Za-z0-9 ]{1,100}', fullmatch=True).filter(lambda x: x.strip()),
+        scrapping_reason=st.from_regex(r'[A-Za-z0-9 ]{1,200}', fullmatch=True).filter(lambda x: x.strip()),
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_10_scrapped_items_page_shows_ip_reassignment_status(self, asset_tag, system_type, manufacturer, scrapping_reason, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 10: Scrapped items page shows IP reassignment status
+
+        For any scrapped asset whose IP address has been reassigned to another asset,
+        the rendered scrapped items page HTML should indicate the IP is no longer
+        available (e.g., with "(Reassigned)" label or different styling).
+
+        **Validates: Requirements 7.1, 7.2**
+        """
+        from django.urls import reverse
+        from django.utils import timezone
+
+        manufacturer = manufacturer.strip()
+        scrapping_reason = scrapping_reason.strip()
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not Asset.objects.filter(asset_tag=asset_tag).exists())
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP address
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=False,
+        )
+
+        # Create a scrapped asset with the IP
+        scrapped_date = timezone.now()
+        scrapped_asset = Asset.objects.create(
+            asset_tag=asset_tag,
+            system_type=system_type,
+            operating_system=self.os,
+            ip_address=ip,
+            manufacturer=manufacturer,
+            scrapping_reason=scrapping_reason,
+            status='scrapped',
+            scrapped_date=scrapped_date,
+        )
+
+        # Simulate IP reassignment: mark the IP as assigned (reassigned to another asset)
+        ip.is_assigned = True
+        ip.save()
+
+        # Log in and request the scrapped items page
+        self.user.set_password('testpass123')
+        self.user.save()
+        self.client.login(username=self.user.username, password='testpass123')
+
+        response = self.client.get(reverse('scrapped_items'))
+        assert response.status_code == 200, (
+            f"Expected status 200 but got {response.status_code}"
+        )
+
+        content = response.content.decode()
+
+        # Requirement 7.1: The page should indicate the IP is no longer available
+        assert '(Reassigned)' in content, (
+            f"Scrapped items page should show '(Reassigned)' label for IP {address} "
+            f"that has been reassigned"
+        )
+
+        # Requirement 7.2: The IP should be displayed with different styling (red color)
+        assert 'color: red' in content or 'color:red' in content, (
+            f"Scrapped items page should display reassigned IP {address} with red color styling"
+        )
+
+        # Verify the IP address itself is still shown (historical preservation)
+        assert address in content, (
+            f"IP address '{address}' should still appear on scrapped items page "
+            f"even when reassigned"
+        )
+
+        # Clean up
+        scrapped_asset.delete()
+        ip.delete()
+
+    @given(
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+        is_assigned=st.booleans(),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_8_free_ips_page_shows_availability_status(self, ip_last_octet, is_assigned):
+        """
+        # Feature: enhanced-scrapped-items, Property 8: Free IPs page shows availability status
+
+        For any IP address displayed on the free IPs page, the rendered HTML
+        should indicate whether the IP is available (is_assigned=False) or
+        occupied (is_assigned=True).
+
+        **Validates: Requirements 5.2, 6.2**
+        """
+        from django.urls import reverse
+
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP with the given assignment status
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=is_assigned,
+            assigned_to_asset=None,
+        )
+
+        # Log in and request the free IPs page
+        self.user.set_password('testpass123')
+        self.user.save()
+        self.client.login(username=self.user.username, password='testpass123')
+
+        response = self.client.get(reverse('free_ips'))
+        assert response.status_code == 200, (
+            f"Expected status 200 but got {response.status_code}"
+        )
+
+        content = response.content.decode()
+
+        # The IP address should appear on the page
+        assert address in content, (
+            f"IP address '{address}' should appear on the free IPs page"
+        )
+
+        if is_assigned:
+            # Requirement 6.2: Occupied IPs should have the 'occupied' CSS class
+            assert 'occupied' in content, (
+                f"Occupied IP {address} should have 'occupied' CSS class on free IPs page"
+            )
+            # The title attribute should indicate 'Occupied'
+            assert 'title="Occupied"' in content, (
+                f"Occupied IP {address} should have title='Occupied' on free IPs page"
+            )
+        else:
+            # Requirement 5.2: Free IPs should have the 'free' CSS class
+            assert 'free' in content, (
+                f"Free IP {address} should have 'free' CSS class on free IPs page"
+            )
+            # The title attribute should indicate 'Free'
+            assert 'title="Free' in content, (
+                f"Free IP {address} should have title starting with 'Free' on free IPs page"
+            )
+
+        # Clean up
+        ip.delete()
+
+    @given(
+        ip_last_octet=st.integers(min_value=1, max_value=254),
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_9_reassigned_ips_display_in_red_on_free_ips_page(self, ip_last_octet):
+        """
+        # Feature: enhanced-scrapped-items, Property 9: Reassigned IPs display in red on free IPs page
+
+        For any IP address that is reassigned (is_assigned=True), the rendered
+        free IPs page HTML should display the IP address with red color styling
+        or a red CSS class.
+
+        **Validates: Requirements 6.1**
+        """
+        from django.urls import reverse
+
+        address = f"192.168.88.{ip_last_octet}"
+
+        assume(not IPAddress.objects.filter(address=address).exists())
+
+        # Create an IP that is reassigned (is_assigned=True)
+        ip = IPAddress.objects.create(
+            address=address,
+            ip_range=self.ip_range,
+            is_assigned=True,
+            assigned_to_asset=None,
+        )
+
+        # Log in and request the free IPs page
+        self.user.set_password('testpass123')
+        self.user.save()
+        self.client.login(username=self.user.username, password='testpass123')
+
+        response = self.client.get(reverse('free_ips'))
+        assert response.status_code == 200, (
+            f"Expected status 200 but got {response.status_code}"
+        )
+
+        content = response.content.decode()
+
+        # The IP address should appear on the page
+        assert address in content, (
+            f"Reassigned IP '{address}' should appear on the free IPs page"
+        )
+
+        # Requirement 6.1: Reassigned IPs should have the 'occupied' CSS class
+        # which applies red color styling (color: #721c24, background: #f8d7da, border: #dc3545)
+        assert 'occupied' in content, (
+            f"Reassigned IP {address} should have 'occupied' CSS class "
+            f"(which applies red color styling) on free IPs page"
+        )
+
+        # Verify the specific IP element has the occupied class by checking
+        # that the ip-item with occupied class exists in the rendered HTML
+        import re
+        occupied_pattern = re.compile(
+            r'class="ip-item\s+occupied"[^>]*>[\s\S]*?' + re.escape(address)
+        )
+        assert occupied_pattern.search(content), (
+            f"IP {address} should be rendered inside an element with "
+            f"'ip-item occupied' classes for red styling"
+        )
+
+        # Clean up
+        ip.delete()
+
+
+
+
+

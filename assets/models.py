@@ -195,6 +195,7 @@ class IPAddress(models.Model):
     ip_range = models.ForeignKey(IPRange, on_delete=models.CASCADE, related_name='ip_addresses')
     is_assigned = models.BooleanField(default=False, db_index=True)
     assigned_to_asset = models.ForeignKey('Asset', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_ips')
+    freed_date = models.DateTimeField(null=True, blank=True, help_text="Date when IP was released from an asset")
 
     class Meta:
         ordering = ['address']
@@ -219,12 +220,18 @@ class Asset(models.Model):
         ('scrapped', 'Scrapped'),
     ]
     
+    HEALTH_STATUS_CHOICES = [
+        ('healthy', 'Healthy'),
+        ('defective', 'Defective'),
+    ]
+    
     serial_number = models.AutoField(primary_key=True)
     asset_tag = models.CharField(max_length=50, unique=True, db_index=True, help_text="Format: BIDC + number")
     system_type = models.CharField(max_length=20, choices=SYSTEM_TYPE_CHOICES)
     hardware_serial_number = models.CharField(max_length=100, blank=True, null=True, help_text="Hardware serial number (required for Laptop and All-in-One PC)")
     operating_system = models.ForeignKey(OperatingSystem, on_delete=models.PROTECT, related_name='assets')
     ip_address = models.ForeignKey(IPAddress, on_delete=models.SET_NULL, null=True, blank=True, related_name='asset')
+    manual_ip = models.GenericIPAddressField(protocol='IPv4', null=True, blank=True, help_text="Manually entered IP address (not tracked in IP management)")
     particulars = models.TextField(blank=True, null=True, help_text="Detailed information about the asset")
     assigned_to = models.CharField(max_length=100, blank=True, null=True)
     team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='assets')
@@ -232,6 +239,20 @@ class Asset(models.Model):
     warranty_expiration = models.DateField(null=True, blank=True, db_index=True)
     freed_date = models.DateTimeField(null=True, blank=True)
     scrapped_date = models.DateTimeField(null=True, blank=True)
+    manufacturer = models.CharField(max_length=100, blank=True, null=True, help_text="Manufacturer or brand of the asset")
+    scrapping_reason = models.TextField(blank=True, null=True, help_text="Explanation for why the asset was scrapped")
+    health_status = models.CharField(
+        max_length=20,
+        choices=HEALTH_STATUS_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Health status for freed systems"
+    )
+    issues_description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Description of issues for defective freed systems"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -254,6 +275,38 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"{self.filename} - {self.asset.asset_tag}"
+
+
+class NetworkDevice(models.Model):
+    """Model for tracking non-system network devices (cameras, printers, etc.)."""
+    
+    DEVICE_TYPE_CHOICES = [
+        ('Camera', 'Camera'),
+        ('Printer', 'Printer'),
+        ('Punching Machine', 'Punching Machine'),
+        ('Mobile', 'Mobile'),
+        ('Other', 'Other'),
+    ]
+    
+    device_type = models.CharField(max_length=50, choices=DEVICE_TYPE_CHOICES)
+    device_name = models.CharField(max_length=255)
+    ip_address = models.OneToOneField(
+        IPAddress,
+        on_delete=models.PROTECT,
+        related_name='network_device'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['device_name']
+        indexes = [
+            models.Index(fields=['device_type']),
+            models.Index(fields=['device_name']),
+        ]
+    
+    def __str__(self):
+        return f"{self.device_name} ({self.device_type})"
 
 
 # Signal handlers for cache invalidation

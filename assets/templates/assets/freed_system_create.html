@@ -1,0 +1,190 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Add Freed System - Asset Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+.form-section {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #495057;
+    font-size: 1.1rem;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+}
+
+.help-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+.required-indicator {
+    color: #dc3545;
+    font-weight: bold;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Add Freed System</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-section">
+        <h3>Basic Information</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.asset_tag.id_for_label }}">
+                {{ form.asset_tag.label }} <span class="required-indicator">*</span>
+            </label>
+            {{ form.asset_tag }}
+            {% if form.asset_tag.errors %}
+                {% for error in form.asset_tag.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.asset_tag.help_text %}
+                <div class="help-text">{{ form.asset_tag.help_text }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.system_type.id_for_label }}">
+                {{ form.system_type.label }} <span class="required-indicator">*</span>
+            </label>
+            {{ form.system_type }}
+            {% if form.system_type.errors %}
+                {% for error in form.system_type.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.operating_system.id_for_label }}">
+                {{ form.operating_system.label }} <span class="required-indicator">*</span>
+            </label>
+            {{ form.operating_system }}
+            {% if form.operating_system.errors %}
+                {% for error in form.operating_system.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.manufacturer.id_for_label }}">{{ form.manufacturer.label }}</label>
+            {{ form.manufacturer }}
+            {% if form.manufacturer.errors %}
+                {% for error in form.manufacturer.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-section">
+        <h3>Network Information</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.ip_address.id_for_label }}">{{ form.ip_address.label }}</label>
+            {{ form.ip_address }}
+            {% if form.ip_address.errors %}
+                {% for error in form.ip_address.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.ip_address.help_text %}
+                <div class="help-text">{{ form.ip_address.help_text }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.manual_ip.id_for_label }}">{{ form.manual_ip.label }}</label>
+            {{ form.manual_ip }}
+            {% if form.manual_ip.errors %}
+                {% for error in form.manual_ip.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.manual_ip.help_text %}
+                <div class="help-text">{{ form.manual_ip.help_text }}</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-section">
+        <h3>Health Status</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.health_status.id_for_label }}">
+                {{ form.health_status.label }} <span class="required-indicator">*</span>
+            </label>
+            {{ form.health_status }}
+            {% if form.health_status.errors %}
+                {% for error in form.health_status.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.health_status.help_text %}
+                <div class="help-text">{{ form.health_status.help_text }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.issues_description.id_for_label }}">{{ form.issues_description.label }}</label>
+            {{ form.issues_description }}
+            {% if form.issues_description.errors %}
+                {% for error in form.issues_description.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.issues_description.help_text %}
+                <div class="help-text">{{ form.issues_description.help_text }}</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-section">
+        <h3>Additional Details</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.particulars.id_for_label }}">{{ form.particulars.label }}</label>
+            {{ form.particulars }}
+            {% if form.particulars.errors %}
+                {% for error in form.particulars.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create Freed System</button>
+        <a href="{% url 'freed_systems' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

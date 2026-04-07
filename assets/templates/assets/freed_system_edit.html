@@ -1,0 +1,142 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Edit Freed System - Asset Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+.asset-info {
+    background: #e9ecef;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.asset-info h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: #495057;
+}
+
+.asset-info p {
+    margin: 0.25rem 0;
+    color: #6c757d;
+}
+
+.form-section {
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.form-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #495057;
+    font-size: 1.1rem;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+}
+
+.help-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+.required-indicator {
+    color: #dc3545;
+    font-weight: bold;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Edit Freed System: {{ asset.asset_tag }}</h1>
+
+<div class="asset-info">
+    <h3>Asset Information</h3>
+    <p><strong>Asset Tag:</strong> {{ asset.asset_tag }}</p>
+    <p><strong>System Type:</strong> {{ asset.system_type }}</p>
+    <p><strong>Operating System:</strong> {{ asset.operating_system.name }}</p>
+    <p><strong>IP Address:</strong> 
+        {% if asset.ip_address %}
+            {{ asset.ip_address.address }}
+        {% elif asset.manual_ip %}
+            {{ asset.manual_ip }}
+        {% else %}
+            N/A
+        {% endif %}
+    </p>
+    <p><strong>Freed Date:</strong> {{ asset.freed_date|date:"Y-m-d H:i" }}</p>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-section">
+        <h3>Health Status</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.health_status.id_for_label }}">
+                {{ form.health_status.label }} <span class="required-indicator">*</span>
+            </label>
+            {{ form.health_status }}
+            {% if form.health_status.errors %}
+                {% for error in form.health_status.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.health_status.help_text %}
+                <div class="help-text">{{ form.health_status.help_text }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.issues_description.id_for_label }}">{{ form.issues_description.label }}</label>
+            {{ form.issues_description }}
+            {% if form.issues_description.errors %}
+                {% for error in form.issues_description.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+            {% if form.issues_description.help_text %}
+                <div class="help-text">{{ form.issues_description.help_text }}</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-section">
+        <h3>Additional Details</h3>
+        
+        <div class="form-group">
+            <label for="{{ form.particulars.id_for_label }}">{{ form.particulars.label }}</label>
+            {{ form.particulars }}
+            {% if form.particulars.errors %}
+                {% for error in form.particulars.errors %}
+                    <div class="error-message">{{ error }}</div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Update</button>
+        <a href="{% url 'freed_systems' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -180,8 +180,8 @@ class ImportPerformanceTest(PerformanceTestBase):
         elapsed_time = end_time - start_time
         
         # Assertions
-        self.assertEqual(result['success_count'], 1000, 
-                        f"Expected 1000 successful imports, got {result['success_count']}")
+        self.assertEqual(result['created_count'], 1000, 
+                        f"Expected 1000 successful imports, got {result['created_count']}")
         self.assertEqual(result['error_count'], 0,
                         f"Expected 0 errors, got {result['error_count']}")
         
@@ -210,7 +210,7 @@ class ImportPerformanceTest(PerformanceTestBase):
         elapsed_time = end_time - start_time
         
         # Assertions
-        self.assertEqual(result['success_count'], 2000)
+        self.assertEqual(result['created_count'], 2000)
         self.assertEqual(result['error_count'], 0)
         
         # Performance assertion: should scale reasonably (< 120 seconds)
@@ -503,7 +503,7 @@ class IntegratedWorkflowPerformanceTest(PerformanceTestBase):
         import_end = time.time()
         import_time = import_end - import_start
         
-        self.assertEqual(import_result['success_count'], 500)
+        self.assertEqual(import_result['created_count'], 500)
         
         # Step 2: Filter the imported assets
         filter_service = FilterService()

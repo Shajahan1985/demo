@@ -28,5 +28,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('authentication.urls')),
     path('assets/', include('assets.urls')),
+    path('power-monitoring/', include('power_monitoring.urls')),
     path('api/', include(router.urls)),
 ]

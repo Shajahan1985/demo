@@ -1,0 +1,120 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Operating Systems - Asset Tracker{% endblock %}
+
+{% block content %}
+<div class="header-actions">
+    <h1>Operating Systems</h1>
+    <button type="button" class="btn btn-primary" onclick="showAddForm()">Add New OS</button>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Add OS Form (hidden by default) -->
+<div id="addOsForm" style="display: none; margin-bottom: 20px;">
+    <div class="card">
+        <div class="card-header">
+            <h3>Add New Operating System</h3>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% url 'add_operating_system' %}">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="os_name">Operating System Name</label>
+                    <input type="text" name="os_name" id="os_name" class="form-control" placeholder="e.g., Windows 11, Ubuntu 22.04" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Add OS</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideAddForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- OS List -->
+{% if operating_systems %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Operating System Name</th>
+                <th>Assets Using This OS</th>
+                <th>Created Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for os in operating_systems %}
+            <tr>
+                <td>{{ os.name }}</td>
+                <td>{{ os.assets.count }}</td>
+                <td>{{ os.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-primary" onclick="editOS({{ os.id }}, '{{ os.name }}')">Edit</button>
+                    {% if os.assets.count == 0 %}
+                    <form method="post" action="{% url 'delete_operating_system' os.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete {{ os.name }}?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                    </form>
+                    {% else %}
+                    <button type="button" class="btn btn-sm btn-danger" disabled title="Cannot delete - OS is in use by {{ os.assets.count }} asset(s)">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p>No operating systems found. Click "Add New OS" to add one.</p>
+</div>
+{% endif %}
+
+<!-- Edit OS Modal -->
+<div id="editOsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 5px; min-width: 400px;">
+        <h3>Edit Operating System</h3>
+        <form method="post" id="editOsForm">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="edit_os_name">Operating System Name</label>
+                <input type="text" name="os_name" id="edit_os_name" class="form-control" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update</button>
+                <button type="button" class="btn btn-secondary" onclick="hideEditModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showAddForm() {
+    document.getElementById('addOsForm').style.display = 'block';
+    document.getElementById('os_name').focus();
+}
+
+function hideAddForm() {
+    document.getElementById('addOsForm').style.display = 'none';
+    document.getElementById('os_name').value = '';
+}
+
+function editOS(osId, osName) {
+    document.getElementById('editOsModal').style.display = 'block';
+    document.getElementById('edit_os_name').value = osName;
+    document.getElementById('editOsForm').action = '/assets/operating-systems/' + osId + '/edit/';
+}
+
+function hideEditModal() {
+    document.getElementById('editOsModal').style.display = 'none';
+}
+</script>
+{% endblock %}

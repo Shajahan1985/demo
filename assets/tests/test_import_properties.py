@@ -131,8 +131,8 @@ class TestImportServiceProperties(TestCase):
         result = import_service.import_assets(excel_file, self.user)
         
         # Verify all rows were imported successfully
-        assert result['success_count'] == count, \
-            f"Expected {count} successful imports, got {result['success_count']}"
+        assert result['created_count'] == count, \
+            f"Expected {count} successful imports, got {result['created_count']}"
         assert result['error_count'] == 0, \
             f"Expected 0 errors, got {result['error_count']}: {result['errors']}"
         
@@ -178,18 +178,18 @@ class TestImportServiceProperties(TestCase):
         """
         **Validates: Requirements 2.3, 2.4, 3.1, 3.2, 3.3**
         
-        Property 2: Import uniqueness
+        Property 2: Import uniqueness (upsert behavior)
         
         For any import operation, no two assets should be created with the same 
-        asset_tag. If duplicate asset_tags are present in the Excel file or 
-        already exist in the database, the import should reject duplicates and 
-        report errors.
+        asset_tag. If duplicate asset_tags are present in the Excel file, the 
+        first occurrence creates the asset and subsequent occurrences update it.
+        The database should always have exactly one asset per asset_tag.
         
-        This property ensures asset_tag uniqueness is enforced during bulk imports.
+        This property ensures asset_tag uniqueness is maintained via upsert during bulk imports.
         """
         # Ensure duplicate_index is within bounds
         assume(duplicate_index < count)
-        assume(count <= len(self.free_ips))
+        assume(count < len(self.free_ips))
         
         # Create rows with one duplicate
         rows = []
@@ -217,14 +217,14 @@ class TestImportServiceProperties(TestCase):
             }
             rows.append(row)
         
-        # Add another row with the duplicate tag
+        # Add another row with the duplicate tag and a different free IP
         rows.append({
             'asset_tag': duplicate_tag,
             'system_type': 'Laptop',
             'operating_system': self.os2.name,
-            'ip_address': self.free_ips[count].address if count < len(self.free_ips) else self.free_ips[-1].address,
-            'particulars': 'Duplicate row',
-            'assigned_to': 'Duplicate User',
+            'ip_address': self.free_ips[count].address,
+            'particulars': 'Updated row',
+            'assigned_to': 'Updated User',
             'team': self.team2.name,
             'warranty_expiration': '2026-12-31'
         })
@@ -236,17 +236,14 @@ class TestImportServiceProperties(TestCase):
         import_service = ImportService()
         result = import_service.import_assets(excel_file, self.user)
         
-        # Verify that at least one row was rejected due to duplicate
-        assert result['error_count'] >= 1, \
-            f"Expected at least 1 error for duplicate asset_tag, got {result['error_count']}"
-        
-        # Verify that duplicate error is reported
-        duplicate_errors = [
-            err for err in result['errors']
-            if any('already exists' in msg for msg in err['errors'])
-        ]
-        assert len(duplicate_errors) >= 1, \
-            f"Expected duplicate asset_tag error, got: {result['errors']}"
+        # With upsert, the first occurrence creates and the second updates
+        # So we expect created_count = count (unique tags), updated_count = 1 (the duplicate)
+        assert result['created_count'] == count, \
+            f"Expected {count} created, got {result['created_count']}"
+        assert result['updated_count'] == 1, \
+            f"Expected 1 updated (duplicate tag), got {result['updated_count']}"
+        assert result['error_count'] == 0, \
+            f"Expected 0 errors, got {result['error_count']}: {result['errors']}"
         
         # Verify no duplicate asset_tags exist in database
         all_imported_assets = Asset.objects.filter(
@@ -263,8 +260,13 @@ class TestImportServiceProperties(TestCase):
         
         # Verify only one asset with duplicate_tag exists
         duplicate_count = Asset.objects.filter(asset_tag=duplicate_tag).count()
-        assert duplicate_count <= 1, \
-            f"Expected at most 1 asset with tag {duplicate_tag}, found {duplicate_count}"
+        assert duplicate_count == 1, \
+            f"Expected exactly 1 asset with tag {duplicate_tag}, found {duplicate_count}"
+        
+        # Verify the duplicate tag asset was updated with the second row's data
+        updated_asset = Asset.objects.get(asset_tag=duplicate_tag)
+        assert updated_asset.system_type == 'Laptop', \
+            f"Expected system_type 'Laptop' after update, got '{updated_asset.system_type}'"
         
         # Clean up
         for asset in all_imported_assets:
@@ -329,8 +331,8 @@ class TestImportServiceProperties(TestCase):
         result = import_service.import_assets(excel_file, self.user)
         
         # Verify all rows were imported successfully
-        assert result['success_count'] == count, \
-            f"Expected {count} successful imports, got {result['success_count']}"
+        assert result['created_count'] == count, \
+            f"Expected {count} successful imports, got {result['created_count']}"
         assert result['error_count'] == 0, \
             f"Expected 0 errors, got {result['error_count']}: {result['errors']}"
         

@@ -28,11 +28,24 @@
         <li>Move the asset to the Scrapped Items page</li>
         <li>Record the date of deletion</li>
         <li>Retain the asset tag and IP address information</li>
+        <li>Release the IP address for reassignment</li>
     </ul>
 </div>
 
 <form method="post">
     {% csrf_token %}
+    
+    <div class="form-group">
+        <label for="scrapping_reason">Scrapping Reason <span style="color: red;">*</span></label>
+        <textarea 
+            name="scrapping_reason" 
+            id="scrapping_reason" 
+            class="form-control" 
+            rows="4" 
+            placeholder="Enter the reason for scrapping this asset (required)"
+            required></textarea>
+        <small class="form-text text-muted">Please provide a detailed explanation for why this asset is being scrapped.</small>
+    </div>
     
     <div class="form-actions">
         <button type="submit" class="btn btn-danger">Scrap Asset</button>

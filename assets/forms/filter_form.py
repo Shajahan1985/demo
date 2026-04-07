@@ -18,6 +18,12 @@ class AssetFilterForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-control'})
     )
     
+    system_type = forms.ChoiceField(
+        label='System Type',
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    
     asset_tag = forms.CharField(
         label='Asset Tag (BIDC Number)',
         required=False,
@@ -44,6 +50,16 @@ class AssetFilterForm(forms.Form):
         })
     )
     
+    ip_address = forms.CharField(
+        label='IP Address',
+        required=False,
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Search by IP address...'
+        })
+    )
+    
     def __init__(self, *args, **kwargs):
         """
         Initialize form and populate dropdown choices from database.
@@ -57,6 +73,15 @@ class AssetFilterForm(forms.Form):
             for os in OperatingSystem.objects.all().order_by('name')
         ])
         self.fields['operating_system'].choices = os_choices
+        
+        # Populate system type choices
+        from assets.models import Asset
+        system_type_choices = [('', '-- All System Types --')]
+        system_type_choices.extend([
+            (choice[0], choice[1]) 
+            for choice in Asset.SYSTEM_TYPE_CHOICES
+        ])
+        self.fields['system_type'].choices = system_type_choices
         
         # Populate team choices
         team_choices = [('', '-- All Teams --')]

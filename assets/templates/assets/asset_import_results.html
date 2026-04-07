@@ -8,9 +8,9 @@
 </div>
 
 <!-- Success Summary -->
-{% if success_count > 0 %}
+{% if created_count > 0 or updated_count > 0 %}
 <div class="alert alert-success">
-    <strong>Success!</strong> {{ success_count }} asset(s) imported successfully.
+    <strong>Success!</strong> ✓ {{ created_count }} asset(s) created, {{ updated_count }} asset(s) updated.
 </div>
 {% endif %}
 
@@ -27,8 +27,13 @@
         <table>
             <thead>
                 <tr>
-                    <th>Row Number</th>
+                    <th>Row</th>
                     <th>Asset Tag</th>
+                    <th>System Type</th>
+                    <th>OS</th>
+                    <th>IP Address</th>
+                    <th>Assigned To</th>
+                    <th>Team</th>
                     <th>Error Messages</th>
                 </tr>
             </thead>
@@ -37,6 +42,11 @@
                 <tr>
                     <td>{{ error.row }}</td>
                     <td>{{ error.data.asset_tag|default:"N/A" }}</td>
+                    <td>{{ error.data.system_type|default:"N/A" }}</td>
+                    <td>{{ error.data.operating_system|default:"N/A" }}</td>
+                    <td>{{ error.data.ip_address|default:"N/A" }}</td>
+                    <td>{{ error.data.assigned_to|default:"N/A" }}</td>
+                    <td>{{ error.data.team|default:"N/A" }}</td>
                     <td>
                         <ul class="error-list">
                             {% for err_msg in error.errors %}

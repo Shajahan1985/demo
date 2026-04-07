@@ -23,15 +23,31 @@
             <tr>
                 <th>Asset Tag</th>
                 <th>IP Address</th>
+                <th>System Type</th>
+                <th>System Make</th>
                 <th>Scrapped Date</th>
+                <th>Scrapping Reason</th>
             </tr>
         </thead>
         <tbody>
             {% for asset in scrapped_assets %}
             <tr>
                 <td>{{ asset.asset_tag }}</td>
-                <td>{{ asset.ip_address.address|default:"N/A" }}</td>
+                <td>
+                    {% if asset.ip_address %}
+                        {% if asset.ip_address.is_assigned %}
+                            <span style="color: red;">{{ asset.ip_address.address }} (Reassigned)</span>
+                        {% else %}
+                            {{ asset.ip_address.address }}
+                        {% endif %}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td>{{ asset.system_type }}</td>
+                <td>{{ asset.manufacturer|default:"N/A" }}</td>
                 <td>{{ asset.scrapped_date|date:"Y-m-d H:i" }}</td>
+                <td>{{ asset.scrapping_reason|default:"N/A" }}</td>
             </tr>
             {% endfor %}
         </tbody>

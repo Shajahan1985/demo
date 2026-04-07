@@ -1,0 +1,60 @@
+{% extends "assets/base.html" %}
+
+{% block title %}{% if device %}Edit{% else %}Add{% endif %} Network Device - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>{% if device %}Edit{% else %}Add{% endif %} Network Device</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-group">
+        <label for="{{ form.device_type.id_for_label }}" class="required">{{ form.device_type.label }}</label>
+        {{ form.device_type }}
+        {% if form.device_type.errors %}
+            {% for error in form.device_type.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.device_name.id_for_label }}" class="required">{{ form.device_name.label }}</label>
+        {{ form.device_name }}
+        {% if form.device_name.errors %}
+            {% for error in form.device_name.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.ip_address.id_for_label }}" class="required">{{ form.ip_address.label }}</label>
+        {{ form.ip_address }}
+        {% if form.ip_address.errors %}
+            {% for error in form.ip_address.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{% if device %}Update{% else %}Create{% endif %} Device</button>
+        <a href="{% url 'network_device_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

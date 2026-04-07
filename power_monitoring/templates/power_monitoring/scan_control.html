@@ -1,0 +1,221 @@
+{% extends "assets/base.html" %}
+
+{% block title %}Network Scanner - Asset Tracker{% endblock %}
+
+{% block content %}
+<h1>Network Range Scanner</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="info-box">
+    <p><strong>Scanner Status:</strong> 
+        {% if running_scan %}
+            <span class="status-running">🔄 Scan in Progress (Job #{{ running_scan.id }})</span>
+        {% else %}
+            <span class="status-idle">✅ Idle</span>
+        {% endif %}
+    </p>
+    {% if latest_scan %}
+    <p><strong>Last Scan:</strong> {{ latest_scan.started_at|date:"Y-m-d H:i:s" }}</p>
+    <p><strong>Last Scan Results:</strong> {{ latest_scan.online_count }}/{{ latest_scan.total_ips }} online 
+        ({{ latest_scan.tracked_count }} tracked, {{ latest_scan.discovered_count }} discovered)</p>
+    {% endif %}
+</div>
+
+<div class="actions">
+    <button id="startScanBtn" class="btn btn-primary" {% if running_scan %}disabled{% endif %}>
+        🔍 Start Network Scan
+    </button>
+    <a href="{% url 'power_monitoring:scan_history' %}" class="btn btn-info">📋 View Scan History</a>
+    {% if latest_scan %}
+    <a href="{% url 'power_monitoring:scan_results' latest_scan.id %}" class="btn btn-secondary">📊 View Latest Results</a>
+    {% endif %}
+</div>
+
+<div id="scanProgress" class="progress-box" style="display: none;">
+    <h3>Scan Progress</h3>
+    <p id="progressText">Initializing scan...</p>
+    <div class="progress-bar-container">
+        <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <p id="progressStats"></p>
+</div>
+
+<div id="scanComplete" class="complete-box" style="display: none;">
+    <h3>✅ Scan Complete!</h3>
+    <p id="completeStats"></p>
+    <a id="viewResultsLink" href="#" class="btn btn-primary">View Results</a>
+</div>
+
+<style>
+    .info-box {
+        background-color: #f5f5f5;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    
+    .status-running {
+        color: #ff9800;
+        font-weight: bold;
+    }
+    
+    .status-idle {
+        color: #4CAF50;
+        font-weight: bold;
+    }
+    
+    .actions {
+        margin-bottom: 20px;
+    }
+    
+    .progress-box, .complete-box {
+        background-color: #e3f2fd;
+        padding: 20px;
+        border-radius: 5px;
+        margin-top: 20px;
+        border: 2px solid #2196F3;
+    }
+    
+    .complete-box {
+        background-color: #e8f5e9;
+        border-color: #4CAF50;
+    }
+    
+    .progress-bar-container {
+        width: 100%;
+        height: 30px;
+        background-color: #ddd;
+        border-radius: 5px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background-color: #4CAF50;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+    
+    .btn {
+        display: inline-block;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 4px;
+        cursor: pointer;
+        border: none;
+        margin-right: 10px;
+        font-size: 14px;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-info {
+        background-color: #17a2b8;
+        color: white;
+    }
+    
+    .btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+    }
+</style>
+
+<script>
+let currentScanId = null;
+let pollInterval = null;
+
+document.getElementById('startScanBtn').addEventListener('click', function() {
+    // Disable button
+    this.disabled = true;
+    this.textContent = '⏳ Starting...';
+    
+    // Start scan
+    fetch('{% url "power_monitoring:scan_start" %}', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error: ' + data.error);
+            location.reload();
+        } else {
+            currentScanId = data.scan_job_id;
+            document.getElementById('scanProgress').style.display = 'block';
+            startPolling();
+        }
+    })
+    .catch(error => {
+        alert('Error starting scan: ' + error);
+        location.reload();
+    });
+});
+
+function startPolling() {
+    pollInterval = setInterval(checkScanStatus, 2000);
+}
+
+function checkScanStatus() {
+    if (!currentScanId) return;
+    
+    fetch(`/power-monitoring/scan/status/${currentScanId}/`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'running') {
+            const progress = data.progress;
+            const total = progress.total_ips || 1;
+            const checked = progress.online_count + progress.offline_count;
+            const percent = Math.round((checked / total) * 100);
+            
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').textContent = 
+                `Scanning... ${checked}/${total} IPs checked (${percent}%)`;
+            document.getElementById('progressStats').textContent = 
+                `Online: ${progress.online_count} | Offline: ${progress.offline_count} | Tracked: ${progress.tracked_count} | Discovered: ${progress.discovered_count}`;
+        } else if (data.status === 'completed') {
+            clearInterval(pollInterval);
+            document.getElementById('scanProgress').style.display = 'none';
+            document.getElementById('scanComplete').style.display = 'block';
+            
+            const progress = data.progress;
+            document.getElementById('completeStats').innerHTML = 
+                `<strong>Total IPs:</strong> ${progress.total_ips}<br>
+                 <strong>Online:</strong> ${progress.online_count}<br>
+                 <strong>Offline:</strong> ${progress.offline_count}<br>
+                 <strong>Tracked Assets:</strong> ${progress.tracked_count}<br>
+                 <strong>Discovered Systems:</strong> ${progress.discovered_count}`;
+            
+            document.getElementById('viewResultsLink').href = 
+                `/power-monitoring/scan/results/${currentScanId}/`;
+        } else if (data.status === 'failed') {
+            clearInterval(pollInterval);
+            alert('Scan failed: ' + data.error_message);
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error checking status:', error);
+    });
+}
+</script>
+
+{% endblock %}

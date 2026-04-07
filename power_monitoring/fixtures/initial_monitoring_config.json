@@ -1,0 +1,14 @@
+[
+  {
+    "model": "power_monitoring.monitoringconfig",
+    "pk": 1,
+    "fields": {
+      "check_interval_minutes": 15,
+      "after_hours_cutoff": "20:30:00",
+      "notification_time": "17:30:00",
+      "after_hours_notification_time": "20:45:00",
+      "ping_timeout_seconds": 2,
+      "failure_threshold": 3
+    }
+  }
+]

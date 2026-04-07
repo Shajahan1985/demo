@@ -1,0 +1,526 @@
+{% extends "assets/base.html" %}
+{% load static %}
+
+{% block title %}Reassign Asset - Asset Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+.asset-info {
+    background-color: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    border-left: 4px solid #007bff;
+}
+
+.asset-info h3 {
+    margin-top: 0;
+    color: #007bff;
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.asset-info p {
+    margin: 0.5rem 0;
+    color: #495057;
+}
+
+.asset-info strong {
+    color: #212529;
+    font-weight: 600;
+}
+
+.os-input-wrapper {
+    position: relative;
+    display: flex;
+    gap: 0.75rem;
+    align-items: stretch;
+}
+
+.os-dropdown-container,
+.os-manual-container {
+    flex: 1;
+    transition: all 0.3s ease;
+}
+
+.os-manual-container input {
+    height: 100%;
+}
+
+.btn-os-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.btn-os-toggle:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.btn-os-toggle:active {
+    transform: translateY(0);
+}
+
+.btn-os-toggle.active {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    box-shadow: 0 2px 4px rgba(245, 87, 108, 0.3);
+}
+
+.btn-os-toggle.active:hover {
+    background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+    box-shadow: 0 4px 8px rgba(245, 87, 108, 0.4);
+}
+
+#toggleOSIcon {
+    font-size: 1.1rem;
+    transition: transform 0.3s ease;
+}
+
+.btn-os-toggle.active #toggleOSIcon {
+    transform: rotate(180deg);
+}
+
+.os-help-text {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #6c757d;
+    transition: all 0.3s ease;
+}
+
+.os-help-text.manual-mode {
+    color: #f5576c;
+    font-weight: 500;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.os-dropdown-container,
+.os-manual-container {
+    animation: fadeIn 0.3s ease;
+}
+
+@media (max-width: 768px) {
+    .os-input-wrapper {
+        flex-direction: column;
+    }
+    
+    .btn-os-toggle {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* Ensure manual IP input is not disabled */
+#id_manual_ip {
+    background-color: white !important;
+    cursor: text !important;
+    pointer-events: auto !important;
+    opacity: 1 !important;
+}
+
+/* Override any disabled styling */
+input#id_manual_ip:disabled {
+    background-color: white !important;
+    cursor: text !important;
+    opacity: 1 !important;
+}
+
+/* Force enable the input */
+input#id_manual_ip[disabled] {
+    pointer-events: auto !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Reassign Freed Asset</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="asset-info">
+    <h3>Asset Details</h3>
+    <p><strong>Asset Tag:</strong> {{ asset.asset_tag }}</p>
+    <p><strong>System Type:</strong> {{ asset.system_type }}</p>
+    <p><strong>Operating System:</strong> {{ asset.operating_system.name }}</p>
+    <p><strong>Health Status:</strong> <span class="badge badge-success">✓ Healthy</span></p>
+</div>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+    
+    <div class="form-group">
+        <label for="{{ form.assigned_to.id_for_label }}" class="required">{{ form.assigned_to.label }}</label>
+        {{ form.assigned_to }}
+        {% if form.assigned_to.errors %}
+            {% for error in form.assigned_to.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.parent_team.id_for_label }}" class="required">{{ form.parent_team.label }}</label>
+        {{ form.parent_team }}
+        {% if form.parent_team.errors %}
+            {% for error in form.parent_team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group" id="sub_team_group">
+        <label for="{{ form.sub_team.id_for_label }}">{{ form.sub_team.label }}</label>
+        {{ form.sub_team }}
+        {% if form.sub_team.errors %}
+            {% for error in form.sub_team.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    {{ form.team }}
+    
+    <div class="form-group">
+        <label for="{{ form.manual_ip.id_for_label }}" class="required">{{ form.manual_ip.label }}</label>
+        {{ form.manual_ip }}
+        <div class="os-help-text">
+            Enter any static IP address - it will be stored with the asset
+        </div>
+        {% if form.manual_ip.errors %}
+            {% for error in form.manual_ip.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.operating_system.id_for_label }}">{{ form.operating_system.label }}</label>
+        <div class="os-input-wrapper">
+            <div class="os-dropdown-container" id="osDropdownContainer">
+                {{ form.operating_system }}
+            </div>
+            <div class="os-manual-container" id="osManualContainer" style="display: none;">
+                <input type="text" name="os_manual_entry" id="osManualEntry" class="form-control" placeholder="e.g., Windows Server 2022, macOS Ventura">
+            </div>
+            <button type="button" class="btn-os-toggle" onclick="toggleOSManualEntry()" id="toggleOSButton">
+                <span id="toggleOSIcon">✏️</span>
+                <span id="toggleOSText">Manual Entry</span>
+            </button>
+        </div>
+        <div class="os-help-text" id="osHelpText">
+            Select from existing operating systems or click "Manual Entry" to add a new one
+        </div>
+        {% if form.operating_system.errors %}
+            {% for error in form.operating_system.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.system_type.id_for_label }}" class="required">{{ form.system_type.label }}</label>
+        {{ form.system_type }}
+        {% if form.system_type.errors %}
+            {% for error in form.system_type.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.manufacturer.id_for_label }}">{{ form.manufacturer.label }}</label>
+        {{ form.manufacturer }}
+        {% if form.manufacturer.errors %}
+            {% for error in form.manufacturer.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.particulars.id_for_label }}">{{ form.particulars.label }}</label>
+        {{ form.particulars }}
+        {% if form.particulars.errors %}
+            {% for error in form.particulars.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-group">
+        <label for="{{ form.warranty_expiration.id_for_label }}">{{ form.warranty_expiration.label }}</label>
+        {{ form.warranty_expiration }}
+        {% if form.warranty_expiration.errors %}
+            {% for error in form.warranty_expiration.errors %}
+                <div class="error-message">{{ error }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Reassign Asset</button>
+        <a href="{% url 'freed_systems' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let osManualEntryMode = false;
+
+function toggleOSManualEntry() {
+    const osDropdownContainer = document.getElementById('osDropdownContainer');
+    const osManualContainer = document.getElementById('osManualContainer');
+    const osManualInput = document.getElementById('osManualEntry');
+    const toggleButton = document.getElementById('toggleOSButton');
+    const toggleIcon = document.getElementById('toggleOSIcon');
+    const toggleText = document.getElementById('toggleOSText');
+    const osHelpText = document.getElementById('osHelpText');
+    const osSelect = document.getElementById('id_operating_system');
+    
+    osManualEntryMode = !osManualEntryMode;
+    
+    if (osManualEntryMode) {
+        osDropdownContainer.style.display = 'none';
+        osManualContainer.style.display = 'block';
+        toggleButton.classList.add('active');
+        toggleIcon.textContent = '📋';
+        toggleText.textContent = 'Use Dropdown';
+        osHelpText.textContent = 'Enter a custom OS name - it will be automatically added to the system';
+        osHelpText.classList.add('manual-mode');
+        osSelect.value = '';
+        setTimeout(() => osManualInput.focus(), 100);
+    } else {
+        osDropdownContainer.style.display = 'block';
+        osManualContainer.style.display = 'none';
+        toggleButton.classList.remove('active');
+        toggleIcon.textContent = '✏️';
+        toggleText.textContent = 'Manual Entry';
+        osHelpText.textContent = 'Select from existing operating systems or click "Manual Entry" to add a new one';
+        osHelpText.classList.remove('manual-mode');
+        osManualInput.value = '';
+    }
+}
+
+function handleParentTeamChange(parentId) {
+    const subTeamSelect = document.getElementById('id_sub_team');
+    const hiddenTeamInput = document.getElementById('id_team');
+    
+    // Defensive null check
+    if (!hiddenTeamInput) {
+        console.error('ERROR: Hidden team input (id_team) not found!');
+        return;
+    }
+    
+    if (!subTeamSelect) {
+        console.error('ERROR: Sub-team select (id_sub_team) not found!');
+        return;
+    }
+    
+    if (!parentId) {
+        subTeamSelect.style.display = 'none';
+        subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+        hiddenTeamInput.value = '';
+        console.log('Parent team cleared, hidden field cleared');
+        return;
+    }
+    
+    // Update hidden field immediately
+    hiddenTeamInput.value = parentId;
+    console.log('Hidden team field updated to parent team ID:', parentId);
+    
+    // Fetch sub-teams
+    fetch(`/assets/api/get-sub-teams/?parent_id=${parentId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_sub_teams) {
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+                data.sub_teams.forEach(subTeam => {
+                    const option = document.createElement('option');
+                    option.value = subTeam.id;
+                    option.textContent = subTeam.name;
+                    subTeamSelect.appendChild(option);
+                });
+                subTeamSelect.style.display = 'block';
+                console.log('Sub-teams loaded:', data.sub_teams.length);
+            } else {
+                subTeamSelect.style.display = 'none';
+                subTeamSelect.innerHTML = '<option value="">Select Sub-Team</option>';
+                console.log('No sub-teams for this parent team');
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching sub-teams:', error);
+            subTeamSelect.style.display = 'none';
+        });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const parentTeamSelect = document.getElementById('id_parent_team');
+    
+    // Add event listener for parent team changes
+    if (parentTeamSelect) {
+        parentTeamSelect.addEventListener('change', function() {
+            console.log('Parent team changed to:', this.value);
+            handleParentTeamChange(this.value);
+        });
+        
+        // Initial population if value exists on page load
+        if (parentTeamSelect.value) {
+            console.log('Initial parent team value:', parentTeamSelect.value);
+            handleParentTeamChange(parentTeamSelect.value);
+        }
+    } else {
+        console.error('ERROR: Parent team select element not found!');
+    }
+    
+    const subTeamSelect = document.getElementById('id_sub_team');
+    if (subTeamSelect) {
+        subTeamSelect.addEventListener('change', function() {
+            const hiddenTeamInput = document.getElementById('id_team');
+            const parentTeamSelect = document.getElementById('id_parent_team');
+            if (this.value) {
+                hiddenTeamInput.value = this.value;
+                console.log('Hidden team field updated to sub-team ID:', this.value);
+            } else {
+                hiddenTeamInput.value = parentTeamSelect.value;
+                console.log('Sub-team cleared, hidden field reverted to parent team ID:', parentTeamSelect.value);
+            }
+        });
+    }
+    
+    // Ensure manual IP input is enabled and required
+    const ipManualInput = document.getElementById('id_manual_ip');
+    
+    if (ipManualInput) {
+        ipManualInput.removeAttribute('disabled');
+        ipManualInput.removeAttribute('readonly');
+        ipManualInput.setAttribute('required', 'required');
+        ipManualInput.style.backgroundColor = 'white';
+        ipManualInput.style.cursor = 'text';
+        ipManualInput.style.pointerEvents = 'auto';
+    }
+    
+    // Add form submission handler with proper event prevention
+    const form = document.querySelector('form');
+    if (form) {
+        console.log('Form submit event handler attached successfully');
+        
+        form.addEventListener('submit', function(e) {
+            console.log('Form submit event handler executing...');
+            console.log('Form data:', new FormData(form));
+            
+            // Check required fields
+            const assignedTo = document.getElementById('id_assigned_to');
+            const parentTeam = document.getElementById('id_parent_team');
+            const hiddenTeam = document.getElementById('id_team');
+            const manualIp = document.getElementById('id_manual_ip');
+            const systemType = document.getElementById('id_system_type');
+            
+            console.log('Assigned To:', assignedTo ? assignedTo.value : 'NOT FOUND');
+            console.log('Parent Team:', parentTeam ? parentTeam.value : 'NOT FOUND');
+            console.log('Hidden Team:', hiddenTeam ? hiddenTeam.value : 'NOT FOUND');
+            console.log('Manual IP:', manualIp ? manualIp.value : 'NOT FOUND');
+            console.log('System Type:', systemType ? systemType.value : 'NOT FOUND');
+            
+            // Get or create error message container
+            let errorContainer = document.getElementById('validation-error-container');
+            if (!errorContainer) {
+                errorContainer = document.createElement('div');
+                errorContainer.id = 'validation-error-container';
+                errorContainer.className = 'alert alert-danger';
+                errorContainer.style.marginBottom = '1rem';
+                form.insertBefore(errorContainer, form.firstChild);
+            }
+            
+            // Clear previous error messages
+            errorContainer.style.display = 'none';
+            errorContainer.innerHTML = '';
+            
+            // Check if team is set
+            if (!hiddenTeam || !hiddenTeam.value) {
+                console.error('ERROR: Team field is empty! Preventing form submission.');
+                
+                // Display visual error feedback
+                errorContainer.innerHTML = '<strong>Validation Error:</strong> Please select a team before submitting the form.';
+                errorContainer.style.display = 'block';
+                
+                // Scroll to error message
+                errorContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                
+                // Prevent form submission - use both preventDefault and stopImmediatePropagation
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                console.log('Form submission prevented - team field is empty');
+                
+                // Note: return false does NOT work with addEventListener, only preventDefault/stopImmediatePropagation work
+                return;
+            }
+            
+            // Check if manual IP is provided (now the only IP field)
+            console.log('Checking IP field...');
+            console.log('manualIp element:', manualIp);
+            console.log('manualIp.value:', manualIp ? manualIp.value : 'N/A');
+            
+            if (!manualIp || !manualIp.value) {
+                console.error('ERROR: No IP address provided! Preventing form submission.');
+                
+                // Display visual error feedback
+                errorContainer.innerHTML = '<strong>Validation Error:</strong> Please provide an IP address.';
+                errorContainer.style.display = 'block';
+                
+                // Scroll to error message
+                errorContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                
+                // Prevent form submission - use both preventDefault and stopImmediatePropagation
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                console.log('Form submission prevented - no IP address provided');
+                
+                // Note: return false does NOT work with addEventListener, only preventDefault/stopImmediatePropagation work
+                return;
+            }
+            
+            console.log('Form validation passed, allowing submission...');
+        });
+    } else {
+        console.error('ERROR: Form element not found! Event handler could not be attached.');
+    }
+});
+</script>
+{% endblock %}

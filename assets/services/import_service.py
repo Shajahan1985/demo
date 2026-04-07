@@ -35,10 +35,14 @@ class ImportService:
         workbook = openpyxl.load_workbook(file, data_only=True)
         sheet = workbook.active
         
-        # Extract headers from the first row
+        # Extract headers from the first row (normalize: lowercase, strip, spaces to underscores)
         headers = []
         for cell in sheet[1]:
-            headers.append(cell.value)
+            raw = cell.value
+            if raw is not None:
+                headers.append(str(raw).strip().lower().replace(' ', '_'))
+            else:
+                headers.append(None)
         
         # Extract data rows and create dictionaries
         rows = []
@@ -64,7 +68,7 @@ class ImportService:
         Returns:
             Tuple of (is_valid, missing_columns)
         """
-        required_columns = ['asset_tag', 'system_type', 'operating_system', 'ip_address']
+        required_columns = ['asset_tag', 'system_type', 'operating_system']
         missing_columns = []
         
         for required_col in required_columns:
@@ -74,66 +78,84 @@ class ImportService:
         is_valid = len(missing_columns) == 0
         return (is_valid, missing_columns)
     
-    def validate_row(self, row_data: Dict[str, Any], row_number: int) -> Tuple[bool, List[str]]:
+    def validate_row(self, row_data: Dict[str, Any], row_number: int) -> Tuple[bool, List[str], bool]:
         """
         Validate a single row of asset data.
-        
+
         Args:
             row_data: Dictionary containing asset data
             row_number: Row number in Excel file (for error reporting)
-            
+
         Returns:
-            Tuple of (is_valid, error_messages)
+            Tuple of (is_valid, error_messages, is_update)
+            is_update is True when the asset_tag already exists in the database.
         """
         errors = []
-        
-        # Validate asset_tag is non-empty and unique
+        is_update = False
+
+        # Validate asset_tag is non-empty; if it exists, flag as update
         asset_tag = row_data.get('asset_tag')
         if not asset_tag or str(asset_tag).strip() == '':
             errors.append("Asset tag is required")
         else:
-            # Check uniqueness
             if Asset.objects.filter(asset_tag=asset_tag).exists():
-                errors.append("Asset tag already exists")
-        
-        # Validate system_type is one of: Desktop, Laptop, All-in-One PC
+                is_update = True
+
+        # Validate system_type is non-empty and one of: Desktop, Laptop, All-in-One PC
         system_type = row_data.get('system_type')
-        valid_system_types = ['Desktop', 'Laptop', 'All-in-One PC']
-        if system_type not in valid_system_types:
-            errors.append("Invalid system type. Must be Desktop, Laptop, or All-in-One PC")
-        
-        # Validate operating_system exists in database
+        if not system_type or str(system_type).strip() == '':
+            errors.append("System type is required")
+        else:
+            valid_system_types = ['Desktop', 'Laptop', 'All-in-One PC']
+            if system_type not in valid_system_types:
+                errors.append("Invalid system type. Must be Desktop, Laptop, or All-in-One PC")
+
+        # Validate operating_system is non-empty (will be auto-created if not in DB)
         operating_system = row_data.get('operating_system')
-        if not operating_system:
-            errors.append("Operating System is required")
-        else:
-            if not OperatingSystem.objects.filter(name=operating_system).exists():
-                errors.append("Operating System not found")
-        
-        # Validate ip_address is valid IPv4 and available
+        if not operating_system or str(operating_system).strip() == '':
+            errors.append("Operating system is required")
+
+        # Validate ip_address if provided (ip_address is now optional)
         ip_address = row_data.get('ip_address')
-        if not ip_address:
-            errors.append("IP address is required")
-        else:
+        if ip_address and str(ip_address).strip() != '':
             # Validate IPv4 format
             try:
                 validate_ipv4_address(str(ip_address))
             except ValidationError:
-                errors.append("Invalid IPv4 address format")
+                errors.append(f"Invalid IPv4 address format: {ip_address}")
             else:
-                # Check if IP is available
-                ip_obj = IPAddress.objects.filter(address=str(ip_address)).first()
-                if not ip_obj:
-                    errors.append("IP address not found in system")
-                elif ip_obj.is_assigned:
-                    errors.append("IP address not available")
-        
+                ip_str = str(ip_address).strip()
+                
+                # Check if IP exists in IPAddress table
+                ip_obj = IPAddress.objects.filter(address=ip_str).first()
+                
+                if ip_obj and ip_obj.is_assigned:
+                    # IP is in the system and assigned - check if it's to the same asset
+                    if is_update:
+                        existing_asset = Asset.objects.filter(asset_tag=asset_tag).first()
+                        if not (existing_asset and existing_asset.ip_address and existing_asset.ip_address.address == ip_str):
+                            assigned_to_tag = ip_obj.assigned_to_asset.asset_tag if ip_obj.assigned_to_asset else 'unknown'
+                            errors.append(f"IP {ip_str} already assigned to {assigned_to_tag}")
+                    else:
+                        assigned_to_tag = ip_obj.assigned_to_asset.asset_tag if ip_obj.assigned_to_asset else 'unknown'
+                        errors.append(f"IP {ip_str} already assigned to {assigned_to_tag}")
+                
+                # Check if IP is used as manual_ip by another asset
+                manual_ip_asset = Asset.objects.filter(manual_ip=ip_str).first()
+                if manual_ip_asset:
+                    if is_update:
+                        existing_asset = Asset.objects.filter(asset_tag=asset_tag).first()
+                        if not (existing_asset and existing_asset.manual_ip == ip_str):
+                            errors.append(f"IP {ip_str} already used as manual IP by {manual_ip_asset.asset_tag}")
+                    else:
+                        errors.append(f"IP {ip_str} already used as manual IP by {manual_ip_asset.asset_tag}")
+
         # Validate team exists in database if provided
         team = row_data.get('team')
         if team and str(team).strip() != '':
-            if not Team.objects.filter(name=team).exists():
+            if not Team.objects.filter(name__iexact=str(team).strip()).exists():
                 errors.append("Team not found")
-        
+
         # Validate warranty_expiration is valid date format if provided
         warranty_expiration = row_data.get('warranty_expiration')
         if warranty_expiration:
@@ -147,13 +169,13 @@ class ImportService:
                     datetime.strptime(warranty_expiration, '%Y-%m-%d')
                 except ValueError:
                     errors.append("Invalid date format. Use YYYY-MM-DD")
-        
+
         is_valid = len(errors) == 0
-        return (is_valid, errors)
-    
+        return (is_valid, errors, is_update)
+
     def import_assets(self, file, user) -> Dict[str, Any]:
         """
-        Import assets from Excel file.
+        Import assets from Excel file with upsert logic.
         
         Args:
             file: Uploaded Excel file object
@@ -161,20 +183,29 @@ class ImportService:
             
         Returns:
             Dictionary containing:
-                - success_count: Number of successfully imported assets
+                - created_count: Number of newly created assets
+                - updated_count: Number of updated existing assets
                 - error_count: Number of rows with errors
                 - errors: List of error details
         """
         from assets.services.asset_service import AssetService
+        import logging
+        logger = logging.getLogger(__name__)
         
         # Initialize counters and error list
-        success_count = 0
+        created_count = 0
+        updated_count = 0
         error_count = 0
         errors = []
         
         try:
             # Step 1: Parse Excel file
             rows = self.parse_excel(file)
+            logger.warning(f"[IMPORT DEBUG] Parsed {len(rows)} rows")
+            if rows:
+                logger.warning(f"[IMPORT DEBUG] Headers: {list(rows[0].keys())}")
+                for i, row in enumerate(rows[:3]):
+                    logger.warning(f"[IMPORT DEBUG] Row {i+2}: {row}")
             
             # Step 2: Validate headers
             if rows:
@@ -183,7 +214,8 @@ class ImportService:
                 
                 if not is_valid:
                     return {
-                        'success_count': 0,
+                        'created_count': 0,
+                        'updated_count': 0,
                         'error_count': 0,
                         'errors': [{
                             'row': 0,
@@ -194,7 +226,8 @@ class ImportService:
             else:
                 # Empty file
                 return {
-                    'success_count': 0,
+                    'created_count': 0,
+                    'updated_count': 0,
                     'error_count': 0,
                     'errors': [{
                         'row': 0,
@@ -203,38 +236,48 @@ class ImportService:
                     }]
                 }
             
-            # Step 3: Process rows with transaction
-            with transaction.atomic():
-                for row_number, row_data in enumerate(rows, start=2):  # Start at 2 (row 1 is headers)
-                    # Skip empty rows
-                    if all(value is None or str(value).strip() == '' for value in row_data.values()):
-                        continue
-                    
-                    # Validate row
-                    is_valid, validation_errors = self.validate_row(row_data, row_number)
-                    
-                    if not is_valid:
-                        error_count += 1
-                        errors.append({
-                            'row': row_number,
-                            'data': row_data,
-                            'errors': validation_errors
-                        })
-                        continue
-                    
-                    # Prepare data for AssetService.create_asset()
-                    try:
-                        # Get operating system ID
-                        os_obj = OperatingSystem.objects.get(name=row_data.get('operating_system'))
+            # Step 3: Process rows — each row in its own savepoint
+            for row_number, row_data in enumerate(rows, start=2):  # Start at 2 (row 1 is headers)
+                # Skip empty rows
+                if all(value is None or str(value).strip() == '' for value in row_data.values()):
+                    continue
+                
+                # Validate row
+                is_valid, validation_errors, is_update = self.validate_row(row_data, row_number)
+                
+                if not is_valid:
+                    error_count += 1
+                    errors.append({
+                        'row': row_number,
+                        'data': row_data,
+                        'errors': validation_errors
+                    })
+                    continue
+                
+                try:
+                    with transaction.atomic():
+                        # Get or create operating system (always required and validated as non-empty)
+                        os_name = str(row_data.get('operating_system')).strip()
+                        os_obj = OperatingSystem.objects.filter(name__iexact=os_name).first()
+                        if not os_obj:
+                            os_obj = OperatingSystem.objects.create(name=os_name)
                         
-                        # Get IP address ID
-                        ip_obj = IPAddress.objects.get(address=str(row_data.get('ip_address')))
+                        # Get IP address object if provided and non-empty
+                        ip_obj = None
+                        manual_ip_val = None
+                        ip_address_val = row_data.get('ip_address')
+                        if ip_address_val and str(ip_address_val).strip() != '':
+                            ip_str = str(ip_address_val).strip()
+                            ip_obj = IPAddress.objects.filter(address=ip_str).first()
+                            # If IP not in system, treat as manual IP
+                            if not ip_obj:
+                                manual_ip_val = ip_str
                         
-                        # Get team ID if provided
+                        # Get team ID if provided and non-empty
                         team_id = None
                         team_name = row_data.get('team')
                         if team_name and str(team_name).strip() != '':
-                            team_obj = Team.objects.get(name=team_name)
+                            team_obj = Team.objects.get(name__iexact=str(team_name).strip())
                             team_id = team_obj.id
                         
                         # Handle warranty_expiration date
@@ -249,34 +292,84 @@ class ImportService:
                         else:
                             warranty_expiration = None
                         
-                        # Prepare data dict for create_asset
-                        asset_data = {
-                            'asset_tag': row_data.get('asset_tag'),
-                            'system_type': row_data.get('system_type'),
-                            'operating_system': os_obj.id,
-                            'ip_address': ip_obj.id,
-                            'particulars': row_data.get('particulars', ''),
-                            'assigned_to': row_data.get('assigned_to', ''),
-                            'team': team_id,
-                            'warranty_expiration': warranty_expiration
-                        }
-                        
-                        # Create asset using AssetService
-                        AssetService.create_asset(asset_data, user)
-                        success_count += 1
-                        
-                    except Exception as e:
-                        error_count += 1
-                        errors.append({
-                            'row': row_number,
-                            'data': row_data,
-                            'errors': [str(e)]
-                        })
+                        if is_update:
+                            # UPDATE path: look up existing asset and build update data
+                            existing_asset = Asset.objects.get(asset_tag=row_data.get('asset_tag'))
+                            
+                            update_data = {
+                                'system_type': row_data.get('system_type'),
+                                'operating_system': os_obj.id,
+                            }
+                            
+                            # Only include ip_address if provided and non-empty
+                            if ip_obj:
+                                update_data['ip_address'] = ip_obj.id
+                            elif manual_ip_val:
+                                # Clear ip_address if switching to manual IP
+                                update_data['ip_address'] = None
+                            # If IP cell is empty, omit key to preserve existing IP
+                            
+                            # Only include manual_ip if provided
+                            if manual_ip_val:
+                                update_data['manual_ip'] = manual_ip_val
+                            elif ip_obj:
+                                # Clear manual_ip if switching to managed IP
+                                update_data['manual_ip'] = None
+                            
+                            # Only include team if provided and non-empty
+                            if team_id is not None:
+                                update_data['team'] = team_id
+                            # If team is empty, omit key to preserve existing
+                            
+                            # Only include assigned_to if provided and non-empty
+                            assigned_to_val = row_data.get('assigned_to')
+                            if assigned_to_val and str(assigned_to_val).strip() != '':
+                                update_data['assigned_to'] = assigned_to_val
+                            # If assigned_to is empty, omit key to preserve existing
+                            
+                            # Only include particulars if provided and non-empty
+                            particulars_val = row_data.get('particulars')
+                            if particulars_val and str(particulars_val).strip() != '':
+                                update_data['particulars'] = particulars_val
+                            
+                            # Only include warranty_expiration if provided
+                            if warranty_expiration is not None:
+                                update_data['warranty_expiration'] = warranty_expiration
+                            
+                            logger.warning(f"[IMPORT DEBUG] Row {row_number} UPDATE asset_tag={row_data.get('asset_tag')} update_data={update_data}")
+                            AssetService.update_asset(existing_asset, update_data, user)
+                            updated_count += 1
+                        else:
+                            # CREATE path: create new asset with available data
+                            asset_data = {
+                                'asset_tag': row_data.get('asset_tag'),
+                                'system_type': row_data.get('system_type'),
+                                'operating_system': os_obj.id,
+                                'ip_address': ip_obj.id if ip_obj else None,
+                                'manual_ip': manual_ip_val,
+                                'particulars': row_data.get('particulars', ''),
+                                'assigned_to': row_data.get('assigned_to', ''),
+                                'team': team_id,
+                                'warranty_expiration': warranty_expiration
+                            }
+                            
+                            logger.warning(f"[IMPORT DEBUG] Row {row_number} CREATE asset_data={asset_data}")
+                            AssetService.create_asset(asset_data, user)
+                            created_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    errors.append({
+                        'row': row_number,
+                        'data': row_data,
+                        'errors': [str(e)]
+                    })
         
         except Exception as e:
             # Handle unexpected errors during file parsing
             return {
-                'success_count': 0,
+                'created_count': 0,
+                'updated_count': 0,
                 'error_count': 0,
                 'errors': [{
                     'row': 0,
@@ -286,7 +379,10 @@ class ImportService:
             }
         
         return {
-            'success_count': success_count,
+            'created_count': created_count,
+            'updated_count': updated_count,
             'error_count': error_count,
             'errors': errors
         }
+
+
